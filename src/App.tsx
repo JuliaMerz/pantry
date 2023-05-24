@@ -26,6 +26,9 @@ function App() {
     <div className="App">
     <Router>
       <header>
+
+        <div className="logo">
+        </div>
         <nav>
           <ul>
             <li><NavLink to="/" >Home</NavLink></li>

@@ -3,6 +3,7 @@ use chrono::Utc;
 use crate::llm::SerializableTS;
 use crate::state;
 use std::sync::{Arc, RwLock};
+
 #[derive(serde::Serialize)]
 pub struct CommandResponse<T> {
     data: T,

@@ -5,7 +5,7 @@ import { fetch } from '@tauri-apps/api/http';
 import { LLMDownloadable } from '../interfaces';
 import LLMOnlineInfo from '../components/LLMOnlineInfo';
 
-const LLM_INFO_SOURCE = "http://example.com";
+const LLM_INFO_SOURCE = "https://raw.githubusercontent.com/JuliaMerz/pantry/master/models/index.json";
 
 function DownloadableLLMs() {
   const [downloadableLLMs, setDownloadableLLMs] = useState<LLMDownloadable[]>([]);
@@ -14,8 +14,9 @@ function DownloadableLLMs() {
     const fetchDownloadableLLMs = async () => {
       try {
         const response = await fetch(LLM_INFO_SOURCE);
-        const data = await response.json();
-        setDownloadableLLMs(data);
+        console.log(response);
+        const data = await response.data
+        setDownloadableLLMs((data as any).models as any);
       } catch (err) {
         console.error(err);
       }
