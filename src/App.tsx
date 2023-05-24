@@ -1,7 +1,6 @@
 import { useState } from "react";
 import reactLogo from "./assets/react.svg";
 import { invoke } from "@tauri-apps/api/tauri";
-import "./App.css";
 import { NavLink } from 'react-router-dom';
 
 import { BrowserRouter as Router, Route, Routes } from "react-router-dom";

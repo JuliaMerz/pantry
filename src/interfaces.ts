@@ -17,8 +17,8 @@ interface LLMActive extends LLMAvailable {
 }
 
 enum LLMSource {
-  Github,
-  URL
+  Github = "github",
+  URL = "url"
 }
 
 
@@ -55,6 +55,46 @@ interface LLMUnloadRequest extends LLMRequest {
   type: LLMRequestType.Unload,
 }
 
+/*
+Frankly horrible that we need this, but we do.
+
+Typing: We're taking in poorly typed things from
+tauri, so any actually makes sense to use here.
+
+Credit to https://matthiashager.com/converting-snake-case-to-camel-case-object-keys-with-javascript
+*/
+const keysToCamelUnsafe = function (o:any) {
+  const toCamel = (s:any) => {
+    return s.replace(/([-_][a-z])/ig, ($1:any) => {
+      return $1.toUpperCase()
+        .replace('-', '')
+        .replace('_', '');
+    });
+  };
+  const isArray = function (a:any) {
+    return Array.isArray(a);
+  };
+  const isObject = function (o:any) {
+    return o === Object(o) && !isArray(o) && typeof o !== 'function';
+  };
+  if (isObject(o)) {
+    const n = {};
+
+    Object.keys(o)
+      .forEach((k) => {
+        (n as any)[toCamel(k)] = keysToCamelUnsafe(o[k]);
+      });
+
+    return n;
+  } else if (isArray(o)) {
+    return o.map((i:any) => {
+      return keysToCamelUnsafe(i);
+    });
+  }
+
+  return o;
+};
+
 
 export type {
   LLM,
@@ -69,4 +109,5 @@ export type {
 export {
   LLMRequestType,
   LLMSource,
+  keysToCamelUnsafe,
 }

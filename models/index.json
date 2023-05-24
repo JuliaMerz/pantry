@@ -1,0 +1,7 @@
+{
+  "id": "alpaca0.7",
+  "location": "github",
+  "path": "models/alpaca/alpaca0.7.ggml",
+  "type": "ggml",
+  "description": "description of the thing"
+}

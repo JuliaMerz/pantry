@@ -3,20 +3,22 @@
 import React, { useState, useEffect } from 'react';
 import LLMLiveInfo from '../components/LLMLiveInfo';
 import { invoke } from '@tauri-apps/api/tauri';
-import { LLMActive } from '../interfaces';
+import { LLMActive, keysToCamelUnsafe } from '../interfaces';
+import { toLLMActive } from '../rustToTS'
 
 function Home() {
   const [activeLlms, setActiveLlms] = useState<LLMActive[]>([]);
 
-  const rustGetLLMs = async (): Promise<LLMActive[]> => {
-    const activeLLMs: LLMActive[] = await invoke('active_llms');
+  const rustGetLLMs = async (): Promise<{data: LLMActive[]}> => {
+    const activeLLMs: {data: LLMActive[]} = await invoke('active_llms');
     return activeLLMs;
   };
 
   useEffect(() => {
     const fetchLLMs = async () => {
-      const data: LLMActive[] = await rustGetLLMs();
-      setActiveLlms(data);
+      const ret: {data: LLMActive[]} = await rustGetLLMs();
+      console.log(ret.data);
+      setActiveLlms(ret.data.map(toLLMActive));
     };
 
     fetchLLMs();
@@ -25,6 +27,7 @@ function Home() {
   return (
     <div>
       <h1>Home</h1>
+      {console.log(activeLlms)}
       {activeLlms.map((llm) => (
         <LLMLiveInfo key={llm.id} {...llm} />
       ))}
