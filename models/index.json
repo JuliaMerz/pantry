@@ -3,10 +3,12 @@
   "models": [
     {
       "id": "alpaca0.7",
-      "location": "github",
+      "name": "Alpaca",
+      "source": "github",
       "path": "models/alpaca/alpaca0.7.ggml",
       "type": "ggml",
-      "description": "description of the thing"
+      "description": "description of the thing",
+      "licence": "MIT"
     }
   ]
 }

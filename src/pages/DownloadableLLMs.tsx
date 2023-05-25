@@ -16,7 +16,7 @@ function DownloadableLLMs() {
         const response = await fetch(LLM_INFO_SOURCE);
         console.log(response);
         const data = await response.data
-        setDownloadableLLMs((data as any).models as any);
+        setDownloadableLLMs((data as any).models);
       } catch (err) {
         console.error(err);
       }
