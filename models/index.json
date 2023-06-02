@@ -7,6 +7,8 @@
       "source": "github",
       "path": "models/alpaca/alpaca0.7.ggml",
       "type": "ggml",
+      "connector": "ggml",
+      "create_thread": "true",
       "description": "description of the thing",
       "licence": "MIT"
     }

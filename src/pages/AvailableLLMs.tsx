@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/tauri';
-import { LLMAvailable } from '../interfaces';
+import { LLMAvailable, toLLMAvailable } from '../interfaces';
 import LLMInfo from '../components/LLMInfo';
 
 function AvailableLLMs() {
@@ -11,8 +11,11 @@ function AvailableLLMs() {
   useEffect(() => {
     const fetchAvailableLLMs = async () => {
       try {
-        const result = await invoke<LLMAvailable[]>('available_llms');
-        setAvailableLLMs(result);
+        console.log("sending");
+        const result: {data: LLMAvailable[]} = await invoke<{data: LLMAvailable[]}>('available_llms');
+        const res2: {[key:string]: String} = await invoke<{[key:string]: String}>('ping');
+        console.log(res2);
+        setAvailableLLMs(result.data.map(toLLMAvailable));
       } catch (err) {
         console.error(err);
       }

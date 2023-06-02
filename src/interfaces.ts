@@ -9,23 +9,53 @@ interface LLM  {
 interface LLMAvailable extends LLM {
   downloaded: string;
   lastCalled: Date;
-
 }
 interface LLMActive extends LLMAvailable {
   activated: string;
+}
 
+enum LLMRegistryEntrySource{
+  GitHub = "github",
+  External = "external",
+
+}
+
+enum LLMRegistryEntryConnector {
+  Ggml = "ggml",
+  OpenAI = "openai"
+}
+
+interface LLMRegistry {
+  id: string,
+  url: string,
+}
+
+interface LLMRegistryEntry {
+    id: string,
+    name: string,
+    source: LLMRegistryEntrySource, //maybe enum
+    path: string,
+    type: string
+    connector: LLMRegistryEntryConnector
+    create_thread: boolean,
+    description: string,
+    licence: string,
+    parameters: LLMRegistry[],
+    user_parameters: string[],
 }
 
 enum LLMSource {
   Github = "github",
-  URL = "url"
+  External = "external"
 }
 
 
 interface LLMDownloadable extends LLM {
   // Source should basically always be github, unless we develop a... okay fine.
   source: LLMSource,
-  url: string
+  path: string,
+  type: string,
+  license: string,
 
 }
 
@@ -111,3 +141,49 @@ export {
   LLMSource,
   keysToCamelUnsafe,
 }
+
+function toLLM(rustLLM: any): LLM {
+  return {
+    id: rustLLM.llm_info.id,
+    name: rustLLM.llm_info.name,
+    description: rustLLM.llm_info.description,
+  };
+}
+
+function toLLMAvailable(rustLLMAvailable: any): LLMAvailable {
+  return {
+    ...toLLM(rustLLMAvailable),
+    downloaded: rustLLMAvailable.downloaded,
+    lastCalled: new Date(rustLLMAvailable.last_called.time),
+  };
+}
+
+function toLLMActive(rustLLMRunning: any): LLMActive {
+  return {
+    ...toLLMAvailable(rustLLMRunning),
+    activated: rustLLMRunning.activated,
+  };
+}
+
+function toLLMRequest(rustLLMRequest: any): LLMRequest {
+  const type = rustLLMRequest.type.toLowerCase() as LLMRequestType;
+
+  const baseRequest: LLMRequest = {
+    ...toLLM(rustLLMRequest),
+    type: type,
+    requester: rustLLMRequest.requester,
+  };
+
+  if (type === LLMRequestType.Download) {
+    return {
+      ...(baseRequest as any),
+      source: rustLLMRequest.source.toLowerCase() as LLMSource,
+      url: rustLLMRequest.url,
+    };
+  }
+
+  return baseRequest;
+}
+
+export { toLLM, toLLMAvailable, toLLMActive, toLLMRequest };
+

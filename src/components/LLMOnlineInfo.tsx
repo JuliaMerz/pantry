@@ -6,13 +6,21 @@ import { LLMDownloadable, LLMSource } from '../interfaces';
 interface LLMOnlineInfoProps extends LLMDownloadable {}
 
 function LLMOnlineInfo(props: LLMOnlineInfoProps) {
-  const { id, name, description, source } = props;
+  const { id, name, description, source, path, type, license } = props;
 
   return (
-    <div>
+    <div className="card split available-llm">
+      <div className="left">
       <h2>{name} <small>({id})</small></h2>
-      <p>{description}</p>
-      <p>Source: {source === LLMSource.Github ? 'Github' : 'URL'}</p>
+      <div>{description}</div>
+      <div className="flex-row">
+        <div><b>Source:</b> {source === LLMSource.Github ? 'GitHub' : 'External'}</div>
+        <div><b>License:</b> {license}</div>
+      </div>
+      </div>
+    <div className="right">
+        <button>Download</button>
+    </div>
     </div>
   );
 }

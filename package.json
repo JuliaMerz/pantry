@@ -16,7 +16,8 @@
     "@tauri-apps/api": "^1.3.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-router-dom": "^6.11.2"
+    "react-router-dom": "^6.11.2",
+    "tauri-plugin-store-api": "https://github.com/tauri-apps/tauri-plugin-store"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^1.3.0",

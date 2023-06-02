@@ -23,10 +23,13 @@ div.card {
 div.split {
   display: flex;
   flex-direction: row;
+  justify-content: space-between;
 }
 
 .right {
   float: right;
+  margin: 8px;
+
 }
 
 .left {
@@ -36,5 +39,13 @@ div.split {
 div.card>div>h2:first-child {
   margin-top: 0;
   padding-top: 0;
+}
+
+div.flex-row {
+  display:flex;
+  flex-direction: row;
+}
+div.flex-row div {
+  margin-right: 5px;
 }
 

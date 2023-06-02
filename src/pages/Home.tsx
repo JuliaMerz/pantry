@@ -3,8 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import LLMLiveInfo from '../components/LLMLiveInfo';
 import { invoke } from '@tauri-apps/api/tauri';
-import { LLMActive, keysToCamelUnsafe } from '../interfaces';
-import { toLLMActive } from '../rustToTS'
+import { LLMActive, keysToCamelUnsafe, toLLMActive } from '../interfaces';
 
 function Home() {
   const [activeLlms, setActiveLlms] = useState<LLMActive[]>([]);
