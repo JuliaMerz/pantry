@@ -7,6 +7,7 @@ use tiny_tokio_actor::*;
 //src/llm_actor.rs
 
 pub struct LLMActor {
+    pub loaded: bool,
     pub llm_connector: connectors::LLMConnectorType,
     pub llm_internal: Box<dyn connectors::LLMInternalWrapper>,
 }
@@ -22,6 +23,12 @@ impl Handler<connectors::SysEvent, ID> for LLMActor {
     }
 }
 
+#[async_trait]
+impl Handler<connectors::SysEvent, Load> for LLMActor {
+    async fn handle(&mut self, msg: Load, ctx: &mut ActorContext<connectors::SysEvent>) -> bool {
+        true
+    }
+}
 
 ////equivalent of call
 //#[derive(Message)]
@@ -36,9 +43,17 @@ impl Handler<connectors::SysEvent, ID> for LLMActor {
 //struct Status();
 
 
-//equivalent of load
+//equivalent of load/init
 #[derive(Clone, Debug)]
-struct ID();
+pub struct Load();
+
+impl Message for Load {
+    type Response = bool;
+}
+
+//equivalent of ping
+#[derive(Clone, Debug)]
+pub struct ID();
 
 impl Message for ID {
     type Response = String;

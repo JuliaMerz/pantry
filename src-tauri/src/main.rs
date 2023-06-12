@@ -54,16 +54,28 @@ async fn main() {
     let system = ActorSystem::new("pantry", bus);
 
     let man_act = connectors::llm_manager::LLMManagerActor {
-        llms: HashMap::new()
+        active_llm_actors: HashMap::new()
     };
 
     let manager_addr: ActorRef<connectors::SysEvent, llm_manager::LLMManagerActor> = system.create_actor("llm_manager", man_act).await.unwrap();
 
+    // Listen for events on the system event bus
+    let mut events: EventReceiver<connectors::SysEvent> = system.events();
+    tokio::spawn(async move {
+        println!("listening for sys events");
+        loop {
+            match events.recv().await {
+                Ok(event) => println!("Received sys event! {:?}", event),
+                Err(err) => println!("Error receivng sys event!!! {:?}", err)
+            }
+        }
+    });
 
+    let manager_addr_clone = manager_addr.clone();
 
     let builder = tauri::Builder::default()
 
-        .setup(|app| {
+        .setup(move |app| {
 
             // Load up the state
             let state: tauri::State<state::GlobalState> = app.state();
@@ -98,9 +110,9 @@ async fn main() {
                 };
 
                 // let running_llms_json:Vec<LLM> =
-                match store.get("running_llms") {
+                match store.get("active_llms") {
                     Some(val2) => {
-                        println!("Found running_llms attempting to deserialize");
+                        println!("Found active_llms attempting to deserialize");
                         match serde_json::from_value(val2.to_owned()) {
                             Err(_) => Ok(Vec::new()),
                             Ok(value) => Ok(value)
@@ -146,16 +158,29 @@ async fn main() {
             //     Err(_) => {state.user_settings = None}
             // }
 
-            // If the LLM exists and is available we boot it up!
+            // If running LLMs exist, we need to boot them up.
+            let app_handle = app.handle();
             if running_llms_vec.is_ok() {
                 println!("processing running LLMs");
-                for val in running_llms_vec.unwrap().into_iter() {
-                    if let Some(new_llm) = state.available_llms.get(&val) {
-                        // new_llm.load();
-                        println!("Inserting {val} into running LLMs");
-                        state.running_llms.insert(val);
+                tokio::spawn( async move {
+                    let state_copy:Arc<tauri::State<state::GlobalState>> = Arc::new(app_handle.state());
+                    for val in running_llms_vec.unwrap().into_iter() {
+                        let manager_addr_copy = manager_addr_clone.clone();
+                        if let Some(new_llm) = state_copy.available_llms.get(&val) {
+                            let result = llm::LLMActivated::activate_llm(new_llm.value().clone(), manager_addr_copy).await;
+                            // new_llm.load();
+                            match result {
+                                Ok(running) => {
+                                    println!("Inserting {val} into running LLMs");
+                                    state_copy.activated_llms.insert(val, running);
+                                },
+                                Err(err) => {
+                                    println!("failed to launch {val} skipping");
+                                }
+                            }
+                        }
                     }
-                }
+                });
             }
 
             Ok(())
@@ -165,7 +190,7 @@ async fn main() {
 
     let app = builder
         .plugin(tauri_plugin_store::Builder::default().build())
-        .manage(state::create_global_state(manager_addr, DashSet::new(), DashMap::new()))
+        .manage(state::create_global_state(manager_addr, DashMap::new(), DashMap::new()))
         .invoke_handler(tauri::generate_handler![
             frontend::get_requests,
             frontend::active_llms,

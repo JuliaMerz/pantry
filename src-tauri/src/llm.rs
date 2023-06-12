@@ -6,7 +6,9 @@ use std::sync::{Arc, RwLock};
 use tokio::sync::Mutex;
 use std::collections::HashMap;
 
-use crate::frontend::{LLMInfo, LLMAvailable, LLMRunning, LLMStatus};
+use crate::connectors::llm_actor;
+use crate::connectors::llm_manager;
+use crate::frontend;
 use crate::error::PantryError;
 use crate::connectors::llm_actor::LLMActor;
 use crate::connectors::registry;
@@ -22,14 +24,15 @@ use bincode;
 // src/llm.rs
 
 //Potentially unecessary wrapper class, written to give us space.
+#[async_trait]
 pub trait LLMWrapper {
-    fn llm_running(&self) -> bool;
-    fn get_info(&self) -> LLMStatus;
-    fn status(&self) -> LLMStatus;
-    fn load(&self) -> Result<(), String>;
-    fn unload(&self) -> Result<(), String>;
-    fn call(&self, message: &str, parameters_json: &str) -> Result<String, &'static str>;
-    fn into_llm_running(&self) -> Result<LLMRunning, PantryError>;
+    fn get_info(&self) -> frontend::LLMStatus;
+    async fn status(&self) -> frontend::LLMStatus;
+    async fn load(&self) -> Result<(), PantryError>;
+    async fn reload(&self) -> Result<(), PantryError>;
+    async fn unload(&self) -> Result<(), String>;
+    async fn call(&mut self, message: &str, parameters_json: &str) -> Result<String, &'static str>;
+    fn into_llm_running(&self) -> frontend::LLMRunning;
 }
 
 // Implements LLMWrapper
@@ -41,7 +44,7 @@ pub struct LLM {
     pub description: String,
     pub downloaded_reason: String,
     pub downloaded_date: DateTime<Utc>,
-    pub last_called: RwLock<DateTime<Utc>>,
+    pub last_called: RwLock<Option<DateTime<Utc>>>,
 
 
     // Functionality
@@ -51,10 +54,15 @@ pub struct LLM {
     pub parameters: Vec<(String, String)>, // Hardcoded Parameters
     pub user_parameters: Vec<String>, //User Parameters
 
+    // #[serde(skip)]
+    // pub connector: RwLock<Option<LLMConnector>>,
+}
 
-
-    #[serde(skip)]
-    pub connector: Option<LLMConnector>,
+pub struct LLMActivated {
+    pub llm: Arc<LLM>,
+    pub activated_reason: String,
+    pub activated_time: DateTime<Utc>,
+    actor: ActorRef<connectors::SysEvent, llm_actor::LLMActor>
 }
 
 impl Clone for LLM {
@@ -71,7 +79,6 @@ impl Clone for LLM {
             config: self.config.clone(),
             parameters: self.parameters.clone(),
             user_parameters: self.user_parameters.clone(),
-            connector: None,  // always clone as None
         }
     }
 }
@@ -92,43 +99,75 @@ pub fn deserialize_llms(path: PathBuf) -> Result<Vec<LLM>, Box<dyn std::error::E
     Ok(llms)
 }
 
-pub struct LLMConnector {
-    pub activated: String,
-    pub actor: ActorRef<connectors::SysEvent, LLMActor>,
+
+impl LLMActivated {
+    pub async fn activate_llm(llm: Arc<LLM>, manager_addr: ActorRef<connectors::SysEvent, llm_manager::LLMManagerActor>) -> Result<LLMActivated, PantryError> {
+        match manager_addr.ask(llm_manager::CreateLLMActorMessage(llm.id.clone(), llm.connector_type.clone(), llm.config.clone())).await {
+            Ok(result) => {
+                match result {
+                    // At this point we've created the LLM actor.
+                    Ok(val) => Ok(LLMActivated {
+                        llm: llm,
+                        activated_reason: "User request".into(),
+                        activated_time: chrono::offset::Utc::now(),
+                        actor: val
+                    }),
+                    Err(err) => Err(err)
+                }
+
+            },
+            Err(err) => Err(PantryError::LLMStartupFailed(err))
+        }
+    }
 }
 
-
-
-impl LLMWrapper for LLM {
-    fn llm_running(&self) -> bool {
-        self.connector.is_some()
-    }
-
-    fn get_info(&self) -> LLMStatus {
-        LLMStatus {
-            status: format!("ID: {}, Name: {}, Description: {}", self.id, self.name, self.description),
+#[async_trait]
+impl LLMWrapper for LLMActivated {
+    fn get_info(&self) -> frontend::LLMStatus {
+        frontend::LLMStatus {
+            status: format!("ID: {}, Name: {}, Description: {}", self.llm.id, self.llm.name, self.llm.description),
         }
     }
 
-    fn status(&self) -> LLMStatus {
+    async fn status(&self) -> frontend::LLMStatus {
         todo!()
     }
 
-    fn load(&self) -> Result<(), String> {
-        todo!()
+    async fn load(&self) -> Result<(), PantryError> {
+        println!("Sending LLM bootup message");
+        match self.actor.ask(llm_actor::Load {}).await {
+            Ok(val) => {
+                Ok(())
+            },
+            Err(err) => Err(PantryError::LLMStartupFailed(err))
+        }
         // // Get the address of the LLMManagerActor (this might come from your GlobalState, for example)
     }
 
-    fn unload(&self) -> Result<(), String> {
+    async fn reload(&self) -> Result<(), PantryError> {
         todo!()
     }
 
-    fn call(&self, message: &str, parameters_json: &str) -> Result<String, &'static str> {
+    async fn unload(&self) -> Result<(), String> {
         todo!()
     }
 
-    fn into_llm_running(&self) -> Result<LLMRunning, PantryError> {
-        //IMPLEMENT HERE
+    // kinda ugly that we need mutability here for a potentially long call, for a short mut.
+    async fn call(&mut self, message: &str, parameters_json: &str) -> Result<String, &'static str> {
+        todo!()
+    }
+
+    fn into_llm_running(&self) -> frontend::LLMRunning {
+        frontend::LLMRunning {
+            llm_info: frontend::LLMInfo {
+                id: self.llm.id.clone(),
+                name: self.llm.name.clone(),
+                description: self.llm.description.clone()
+            },
+            downloaded: format!("Downloaded {} for {}", self.llm.downloaded_date, self.llm.downloaded_reason),
+            last_called: self.llm.last_called.read().unwrap().clone(),
+            activated: format!("Activated {} for {}", self.activated_time, self.activated_reason)
+        }
         //THEN IMPLEMENT CALL()
     }
 }

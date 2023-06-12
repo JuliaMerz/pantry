@@ -25,7 +25,8 @@ pub struct UserSettings {
 pub struct GlobalState {
     pub user_settings: RwLock<UserSettings>,
     pub manager_addr: ActorRef<connectors::SysEvent, llm_manager::LLMManagerActor>,
-    pub running_llms: DashSet<String>,
+    // pub running_llms: DashSet<String>,
+    pub activated_llms: DashMap<String, llm::LLMActivated>,
     pub available_llms: DashMap<String, Arc<llm::LLM>>,
 }
 
@@ -33,13 +34,13 @@ pub struct GlobalState {
  * Functions that modify our global state (activating/deactivating LLMs)
  * */
 pub fn create_global_state(addr: ActorRef<connectors::SysEvent, llm_manager::LLMManagerActor>,
-            running_llms: DashSet<String>,
+            activated_llms: DashMap<String, llm::LLMActivated>,
             available_llms: DashMap<String, Arc<llm::LLM>>,)
             -> GlobalState {
     GlobalState {
         manager_addr: addr,
         user_settings: RwLock::new(UserSettings {  }), // We initialize user settings after global state
-        running_llms: running_llms,
+        activated_llms: activated_llms,
         available_llms: available_llms,
         // running_llms: DashMap::new(),
         // available_llms: DashMap::new(),

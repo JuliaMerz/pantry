@@ -4,6 +4,7 @@ use tauri::Manager;
 use chrono::serde::ts_seconds_option;
 use crate::connectors::llm_manager;
 use crate::connectors::registry::LLMRegistryEntry;
+use crate::error::PantryError;
 use crate::llm;
 use crate::llm::LLMWrapper;
 use crate::connectors::registry;
@@ -59,7 +60,7 @@ pub struct LLMAvailable {
 impl From<&llm::LLM> for LLMAvailable {
     fn from(value: &llm::LLM) -> Self {
         let datetime: Option<DateTime<Utc>> = match value.last_called.read() {
-            Ok(value) => Some(value.clone()),
+            Ok(value) => value.clone(),
             Err(_) => None
         };
         LLMAvailable {
@@ -109,19 +110,13 @@ pub async fn get_requests(state: tauri::State<'_, state::GlobalState>) -> Result
 
 #[tauri::command]
 pub async fn active_llms(state: tauri::State<'_, state::GlobalState>) -> Result<CommandResponse<Vec<LLMRunning>>, String> {
-    let active_llms_iter = state.running_llms.iter();
+    let active_llms_iter = state.activated_llms.iter();
     println!("received command active_llms");
     let mut active_llms: Vec<LLMRunning> = Vec::new();
-    for val in active_llms_iter {
+    for pair in active_llms_iter {
         println!("attempting to add an active");
-        let llm = match state.available_llms.get(val.key()) {
-            Some(value) => value,
-            None => return Err("Inconsistent internal state failure".into())
-        };
-        active_llms.push(match llm.into_llm_running() {
-            Ok(value) => value,
-            Err(perr) => return Err(perr.to_string())});
-
+        let llm = pair.value();
+        active_llms.push(llm.into_llm_running());
     }
     let mock_llm =  LLMInfo {
         id: "llm_id".into(),
@@ -277,20 +272,30 @@ pub async fn ping(state: tauri::State<'_, state::GlobalState>) -> Result<Vec<Str
 #[tauri::command]
 pub async fn load_llm(id: String, state: tauri::State<'_, state::GlobalState>) -> Result<(), String> {
     println!("Attempting to load an LLM");
-    if (state.running_llms.contains(&id)) {
+    if (state.activated_llms.contains_key(&id)) {
         return Err("llm already loaded".into());
     }
-    if let Some(llm) = state.available_llms.get(&id) {
-        match state.manager_addr.ask(llm_manager::CreateLLMActorMessage(llm.id.clone(), llm.connector_type.clone(), llm.config.clone())).await {
-            Ok(val) => {
-                state.running_llms.insert(llm.id.clone());
-            },
-            Err(err) => ()
 
+    if let Some(llm) = state.available_llms.get(&id) {
+        match llm::LLMActivated::activate_llm(llm.value().clone(), state.manager_addr.clone()).await {
+            Ok(llm_activ) => {
+                match llm_activ.load().await {
+                    Ok(_) => {
+                        state.activated_llms.insert(llm_activ.llm.id.clone(), llm_activ);
+                        Ok(())
+                    },
+                    Err(err) => {
+                        //For now we insert anyway and let the user call reload.
+                        state.activated_llms.insert(llm_activ.llm.id.clone(), llm_activ);
+                        Err(format!("LLM Actor Loaded, but wrapper failed to launch. You might want to try calling reload LLM. Failed with {}", err.to_string()))
+                    }
+                }
+            },
+            Err(err) => Err(err.to_string())
         }
-        // llm.load_llm().await;
+    } else {
+        Err("Couldn't find LLM".into())
     }
-    Ok(())
 }
 
 // #[tauri::command]

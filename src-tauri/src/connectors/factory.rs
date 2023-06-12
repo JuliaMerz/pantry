@@ -12,7 +12,7 @@ pub fn factory_llms() -> Vec<llm::LLM> {
             description: "openAi's Ada model".to_string(),
             downloaded_reason: "Factory Include".to_string(),
             downloaded_date: Utc::now(),
-            last_called: RwLock::new(Utc::now()),
+            last_called: RwLock::new(Option::Some(Utc::now())),
 
             create_thread: true, //eventually false, true for testing
             connector_type: connectors::LLMConnectorType::OpenAI,
@@ -21,8 +21,6 @@ pub fn factory_llms() -> Vec<llm::LLM> {
                 ("model".to_string(), "text-davinci-ada".to_string())],
             parameters: vec![],
             user_parameters: vec![],
-
-            connector: Option::None,
 
         },
         llm::LLM {
@@ -31,7 +29,7 @@ pub fn factory_llms() -> Vec<llm::LLM> {
             description: "openAi's GPT-4 model".to_string(),
             downloaded_reason: "Factory Include".to_string(),
             downloaded_date: Utc::now(),
-            last_called: RwLock::new(Utc::now()),
+            last_called: RwLock::new(Option::Some(Utc::now())),
 
             create_thread: true, //eventually false, true for testing
             connector_type: connectors::LLMConnectorType::OpenAI,
@@ -40,8 +38,6 @@ pub fn factory_llms() -> Vec<llm::LLM> {
                 ("model".to_string(), "text-davinci-ada".to_string())],
             parameters: vec![],
             user_parameters: vec![],
-
-            connector: Option::None,
         },
     ]
 }
