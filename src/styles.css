@@ -49,3 +49,21 @@ div.flex-row div {
   margin-right: 5px;
 }
 
+div.collapse-wrapper {
+  background-color: var(--color-bg-alt);
+}
+
+div.llm-history-item {
+  margin: 5px;
+  border: 1px solid black;
+
+}
+
+div.llm-history-item td {
+  padding: 2px;
+}
+
+h5 {
+  margin-bottom: 0px;
+
+}

@@ -3,7 +3,7 @@ use std::sync::{Arc, RwLock};
 use crate::connectors::llm_manager;
 use crate::error::PantryError;
 use crate::frontend::available_llms;
-use crate::connectors::registry;//::LLMRegistryEntry;
+use crate::registry;//::LLMRegistryEntry;
 use crate::connectors;//::LLMRegistryEntry;
 use crate::llm;
 use dashmap::{DashMap, DashSet};

@@ -1,11 +1,14 @@
-use crate::connectors::registry::LLMRegistryEntryConnector;
+use crate::registry::LLMRegistryEntryConnector;
+use serde_json::Value;
+use std::collections::HashMap;
+use std::fmt;
 use tiny_tokio_actor::*;
+use tokio::sync::mpsc;
 use std::sync::{Arc, RwLock};
 
 
 use crate::error::PantryError;
 
-pub mod registry;
 pub mod factory;
 pub mod llm_manager;
 pub mod llm_actor;
@@ -13,6 +16,8 @@ pub mod llm_actor;
 pub mod generic;
 pub mod llmrs;
 pub mod openai;
+
+//src/connectors/mod.rs
 
 // We use the system event for debug monitoring
 #[derive(Clone, Debug)]
@@ -27,14 +32,24 @@ pub enum LLMConnectorType {
     OpenAI,
 }
 
-pub fn get_new_llm_connector(connector_type: LLMConnectorType) -> Box<dyn LLMInternalWrapper> {
+impl fmt::Display for LLMConnectorType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            LLMConnectorType::GenericAPI => write!(f, "GenericAPI"),
+            LLMConnectorType::LLMrs => write!(f, "LLMrs"),
+            LLMConnectorType::OpenAI => write!(f, "OpenAI"),
+        }
+    }
+}
+
+
+pub fn get_new_llm_connector(connector_type: LLMConnectorType, config: HashMap<String, Value>) -> Box<dyn LLMInternalWrapper> {
 
     match connector_type {
-        LLMConnectorType::GenericAPI => Box::new(generic::GenericAPIConnector{}),
-        LLMConnectorType::OpenAI => Box::new(openai::OpenAIConnector{}),
-        LLMConnectorType::LLMrs => Box::new(llmrs::LLMrsConnector{})
+        LLMConnectorType::GenericAPI => Box::new(generic::GenericAPIConnector::new(config)),
+        LLMConnectorType::OpenAI => Box::new(openai::OpenAIConnector::new(config)),
+        LLMConnectorType::LLMrs => Box::new(llmrs::LLMrsConnector::new(config))
     }
-
 }
 
 // Conversion from the format used by the index into our internal typing
@@ -43,6 +58,7 @@ impl From<LLMRegistryEntryConnector> for LLMConnectorType {
         match value {
             LLMRegistryEntryConnector::GenericAPI => LLMConnectorType::GenericAPI,
             LLMRegistryEntryConnector::Ggml => LLMConnectorType::LLMrs,
+            LLMRegistryEntryConnector::LLMrs => LLMConnectorType::LLMrs,
             LLMRegistryEntryConnector::OpenAI => LLMConnectorType::OpenAI,
         }
     }
@@ -50,8 +66,23 @@ impl From<LLMRegistryEntryConnector> for LLMConnectorType {
 }
 
 /* Actually connect to the LLMs */
-pub trait LLMInternalWrapper: Send + Sync{
+pub trait LLMInternalWrapper: Send + Sync {
+    fn call_llm(self: &Self, msg: String, params: HashMap<String, Value>) -> Result<mpsc::Receiver<LLMEvent>, String>;
+    //mut because we're going to modify our internal session storage
+    fn create_session(self: &mut Self, params: HashMap<String, Value>) -> Result<String, String>; //uuid
+    //mut because we're going to modify our internal session storage
+    fn prompt_session(self: &mut Self, session_id: String, msg: String) -> Result<mpsc::Receiver<LLMEvent>, String>;
+    fn load_llm(self: &mut Self, ) -> Result<(), String>;
+    fn unload_llm(self: &Self, ) -> Result<(), String>; //called by shutdown
 
+}
 
+#[derive(Clone, serde::Serialize)]
+#[serde(tag="type")]
+pub enum LLMEvent {
+  PromptProgress{previous: String, next: String}, // Next words of an LLM.
+  PromptCompletion{previous: String}, // Finished the prompt
+  PromptError{message: String},
+  Other,
 }
 

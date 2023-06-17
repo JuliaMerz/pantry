@@ -1026,6 +1026,13 @@ prop-types@^15.6.2, prop-types@^15.8.1:
     object-assign "^4.1.1"
     react-is "^16.13.1"
 
+react-collapsed@^4.0.2:
+  version "4.0.2"
+  resolved "https://registry.yarnpkg.com/react-collapsed/-/react-collapsed-4.0.2.tgz#5f2b2f9695c6f3858b44771dc36fa40f63b8fa51"
+  integrity sha512-mzGhppOLzW3PGtU+RlSYPANpShYd5wt6LdFWnDgHy/asyIfQT8BHDognr5sYFPouXiHPwGWUtQ6ZfI5jd7bU6Q==
+  dependencies:
+    tiny-warning "^1.0.3"
+
 react-dom@^18.2.0:
   version "18.2.0"
   resolved "https://registry.yarnpkg.com/react-dom/-/react-dom-18.2.0.tgz#22aaf38708db2674ed9ada224ca4aa708d821e3d"
@@ -1151,6 +1158,11 @@ supports-preserve-symlinks-flag@^1.0.0:
   resolved "https://github.com/tauri-apps/tauri-plugin-store#0558a1f6c869ae0afdb0181dfa1ea31be8cf4893"
   dependencies:
     "@tauri-apps/api" "^1.2.0"
+
+tiny-warning@^1.0.3:
+  version "1.0.3"
+  resolved "https://registry.yarnpkg.com/tiny-warning/-/tiny-warning-1.0.3.tgz#94a30db453df4c643d0fd566060d60a875d84754"
+  integrity sha512-lBN9zLN/oAf68o3zNXYrdCt1kP8WsiGW8Oo2ka41b2IM5JL/S1CTyX1rW0mb/zSuJun0ZUrDxx4sqvYS2FWzPA==
 
 to-fast-properties@^2.0.0:
   version "2.0.0"

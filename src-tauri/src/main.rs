@@ -8,7 +8,6 @@ use tiny_tokio_actor::*;
 use std::sync::{Arc, RwLock};
 use dashmap::{DashMap, DashSet};
 use frontend::available_llms;
-use crate::connectors::registry;//::LLMRegistryEntry;
 use crate::connectors::llm_manager;
 use crate::llm::LLMWrapper;
 
@@ -32,6 +31,8 @@ mod frontend;
 mod state;
 mod connectors;
 mod error;
+mod registry;
+mod emitter;
 
 // Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
 #[tauri::command]
@@ -76,6 +77,13 @@ async fn main() {
     let builder = tauri::Builder::default()
 
         .setup(move |app| {
+            #[cfg(debug_assertions)] // only include this code on debug builds
+            {
+              let window = app.get_window("main").unwrap();
+              window.open_devtools();
+              window.close_devtools();
+            }
+
 
             // Load up the state
             let state: tauri::State<state::GlobalState> = app.state();
@@ -163,16 +171,16 @@ async fn main() {
             if running_llms_vec.is_ok() {
                 println!("processing running LLMs");
                 tokio::spawn( async move {
-                    let state_copy:Arc<tauri::State<state::GlobalState>> = Arc::new(app_handle.state());
+                    let state_pointer:Arc<tauri::State<state::GlobalState>> = Arc::new(app_handle.state());
                     for val in running_llms_vec.unwrap().into_iter() {
                         let manager_addr_copy = manager_addr_clone.clone();
-                        if let Some(new_llm) = state_copy.available_llms.get(&val) {
+                        if let Some(new_llm) = state_pointer.available_llms.get(&val) {
                             let result = llm::LLMActivated::activate_llm(new_llm.value().clone(), manager_addr_copy).await;
                             // new_llm.load();
                             match result {
                                 Ok(running) => {
                                     println!("Inserting {val} into running LLMs");
-                                    state_copy.activated_llms.insert(val, running);
+                                    state_pointer.activated_llms.insert(val, running);
                                 },
                                 Err(err) => {
                                     println!("failed to launch {val} skipping");
@@ -197,6 +205,7 @@ async fn main() {
             frontend::available_llms,
             frontend::ping,
             frontend::load_llm,
+            frontend::call_llm,
             // frontend::unload_llm,
             // frontend::download_llm
         ])

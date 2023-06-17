@@ -1,13 +1,19 @@
 use chrono::DateTime;
+use serde_json::Value;
+use std::collections::HashMap;
 use chrono::Utc;
 use tauri::Manager;
+use uuid::Uuid;
 use chrono::serde::ts_seconds_option;
+use crate::connectors;
+use crate::connectors::LLMEvent;
 use crate::connectors::llm_manager;
-use crate::connectors::registry::LLMRegistryEntry;
 use crate::error::PantryError;
 use crate::llm;
+use crate::emitter;
+use crate::llm::LLM;
 use crate::llm::LLMWrapper;
-use crate::connectors::registry;
+use crate::registry;
 use crate::state;
 use std::{sync::{Arc, RwLock}, ops::Deref};
 use serde_json::json;
@@ -32,8 +38,21 @@ pub struct CommandResponse<T> {
 #[derive(serde::Serialize)]
 pub struct LLMInfo {
     pub id: String,
+    pub family_id: String,
+    pub organization: String,
     pub name: String,
     pub description: String,
+    pub user_parameters: Vec<String>, //User Parameters
+
+    //These aren't _useful_ to the user, but we include them for advanced users
+    //to get details.
+    pub parameters: HashMap<String, Value>, // Hardcoded Parameters
+
+    // 0 is not capable, -1 is not evaluated.
+    pub capabilities: HashMap<String, isize>,
+
+    pub connector_type: String,
+    pub config: HashMap<String, Value>, // Connector Configs Parameters
 }
 
 
@@ -57,24 +76,6 @@ pub struct LLMAvailable {
     pub last_called: Option<DateTime<Utc>>,
 }
 
-impl From<&llm::LLM> for LLMAvailable {
-    fn from(value: &llm::LLM) -> Self {
-        let datetime: Option<DateTime<Utc>> = match value.last_called.read() {
-            Ok(value) => value.clone(),
-            Err(_) => None
-        };
-        LLMAvailable {
-            llm_info: LLMInfo {
-                id: value.id.clone(),
-                name: value.name.clone(),
-                description: value.description.clone()
-            },
-            downloaded: value.downloaded_reason.clone(),
-            last_called: datetime,
-        }
-    }
-
-}
 
 #[derive(serde::Serialize)]
 pub struct LLMRequest {
@@ -88,6 +89,61 @@ pub struct LLMStatus {
     pub status: String
 }
 
+// so far, we allow three conversions:
+// From LLM to LLMInfo
+//
+// From LLMActivated to LLMRunning
+// From LLM to LLMAvailable
+
+impl From<&llm::LLM> for LLMInfo {
+    fn from(value: &llm::LLM) -> Self {
+        LLMInfo {
+                id: value.id.clone(),
+                family_id: value.family_id.clone(),
+                organization: value.organization.clone(),
+                name: value.name.clone(),
+                description: value.description.clone(),
+                parameters: value.parameters.clone(),
+                user_parameters: value.user_parameters.clone(),
+
+                capabilities: value.capabilities.clone(),
+
+
+
+                connector_type: value.connector_type.to_string(),
+                config: value.config.clone()
+            }
+    }
+}
+
+
+impl From<&llm::LLMActivated> for LLMRunning {
+    fn from(value: &llm::LLMActivated) -> Self {
+        LLMRunning {
+            llm_info: value.llm.as_ref().into(),
+            downloaded: format!("Downloaded {} for {}", value.llm.downloaded_date.format("%b %e %T %Y"), value.llm.downloaded_reason),
+            last_called: value.llm.last_called.read().unwrap().clone(),
+            activated: format!("Activated {} for {}", value.activated_time.format("%b %e %T %Y"), value.activated_reason)
+        }
+    }
+
+}
+
+impl From<&llm::LLM> for LLMAvailable {
+    fn from(value: &llm::LLM) -> Self {
+        let datetime: Option<DateTime<Utc>> = match value.last_called.read() {
+            Ok(value) => value.clone(),
+            Err(_) => None
+        };
+        LLMAvailable {
+            llm_info: value.into() ,
+            downloaded: value.downloaded_reason.clone(),
+            last_called: datetime,
+        }
+    }
+
+}
+
 
 
 #[tauri::command]
@@ -96,8 +152,15 @@ pub async fn get_requests(state: tauri::State<'_, state::GlobalState>) -> Result
     println!("received command get_reqs");
     let mock_llm =  LLMInfo {
         id: "llm_id".into(),
+        family_id: "family_id".into(),
+        organization: "openai".into(),
         name: "llmname".into(),
         description: "I'm a little llm, short and stout!".into(),
+        parameters: HashMap::from([("color".into(), "green".into())]),
+        user_parameters: vec!["shape".into()],
+        connector_type: connectors::LLMConnectorType::GenericAPI.to_string(),
+        capabilities: HashMap::from([("TEXT_COMPLETION".into(), 10), ("CONVERSATION".into(), 10)]),
+        config: HashMap::from([]),
     };
     let mock = LLMRequest {
         llm_info: mock_llm,
@@ -118,18 +181,6 @@ pub async fn active_llms(state: tauri::State<'_, state::GlobalState>) -> Result<
         let llm = pair.value();
         active_llms.push(llm.into_llm_running());
     }
-    let mock_llm =  LLMInfo {
-        id: "llm_id".into(),
-        name: "llmname".into(),
-        description: "I'm a little llm, short and stout!".into(),
-    };
-    let mock = LLMRunning {
-        llm_info: mock_llm,
-        last_called: Option::Some(Utc::now()),
-        downloaded: "dowwwn".into(),
-        activated: "activvvvvv".into(),
-    };
-    active_llms.push(mock);
     Ok(CommandResponse { data: active_llms })
 }
 
@@ -141,45 +192,25 @@ pub async fn available_llms(state: tauri::State<'_, state::GlobalState>) -> Resu
     for val in available_llms_iter {
         available_llms.push(val.value().clone().as_ref().into())
     }
-    let mock_llm =  LLMInfo {
-        id: "llm_id".into(),
-        name: "llmname".into(),
-        description: "I'm a little llm, short and stout!".into(),
-    };
-    let mock = LLMAvailable {
-        llm_info: mock_llm,
-        last_called: Option::Some(Utc::now()),
-        downloaded: "dowwwn".into(),
-    };
-    available_llms.push(mock);
     println!("responding");
     Ok(CommandResponse { data: available_llms })
 }
 
 
 #[tauri::command]
-fn download_llm(llm_reg: LLMRegistryEntry, app: tauri::AppHandle, state: tauri::State<'_, state::GlobalState>) -> Result<CommandResponse<Vec<LLMAvailable>>, String> {
-    let available_llms_iter = state.available_llms.iter();
-    let mut available_llms = Vec::new();
+fn download_llm(llm_reg: registry::LLMRegistryEntry, app: tauri::AppHandle, state: tauri::State<'_, state::GlobalState>) -> Result<CommandResponse<String>, String> {
 
+    let uuid = Uuid::new_v4();
+
+    let id = llm_reg.id.clone();
+
+    tokio::spawn(async move {
+      registry::download_and_write_llm(llm_reg, uuid, app.clone()).await;
+    });
+    // Here we need to download llm_reg.url
 
     //Honestly idk wtf this code is even doing. It's definitely not downloading an LLM.
-    let path = app.path_resolver().app_local_data_dir();
-    match path {
-        Some(pp) => {
-            let mut p = pp.to_owned();
-            p.push("llm_available.dat");
-
-            let llm_iter = state.available_llms.iter();
-            let llm_vec: Vec<llm::LLM> = llm_iter.map(|val| (**(val.value())).clone()).collect();
-
-            llm::serialize_llms(p, &llm_vec);
-            Ok(CommandResponse { data: available_llms })
-        }
-        None => {
-            Err("Unable to save LLMs".into())
-        }
-    }
+    Ok(CommandResponse { data: format!("{}-{}", id, uuid)})
 }
 
 // This command refreshes the registry entries stored in state
@@ -256,7 +287,7 @@ fn save_key(key_id: String, key_value: String, app: tauri::AppHandle, stores: ta
 
 #[tauri::command]
 pub async fn ping(state: tauri::State<'_, state::GlobalState>) -> Result<Vec<String>, String> {
-    match state.manager_addr.ask(llm_manager::Ping{}).await {
+    match state.manager_addr.ask(llm_manager::PingMessage{}).await {
         Ok(val) => match val {
             Ok(va) => {
                 println!("pingok");
@@ -270,26 +301,111 @@ pub async fn ping(state: tauri::State<'_, state::GlobalState>) -> Result<Vec<Str
 
 
 #[tauri::command]
-pub async fn load_llm(id: String, state: tauri::State<'_, state::GlobalState>) -> Result<(), String> {
+pub async fn load_llm(id: String, app: tauri::AppHandle, state: tauri::State<'_, state::GlobalState>) -> Result<(), String> {
     println!("Attempting to load an LLM");
     if (state.activated_llms.contains_key(&id)) {
         return Err("llm already loaded".into());
     }
 
-    if let Some(llm) = state.available_llms.get(&id) {
-        match llm::LLMActivated::activate_llm(llm.value().clone(), state.manager_addr.clone()).await {
-            Ok(llm_activ) => {
-                match llm_activ.load().await {
-                    Ok(_) => {
-                        state.activated_llms.insert(llm_activ.llm.id.clone(), llm_activ);
-                        Ok(())
-                    },
-                    Err(err) => {
-                        //For now we insert anyway and let the user call reload.
-                        state.activated_llms.insert(llm_activ.llm.id.clone(), llm_activ);
-                        Err(format!("LLM Actor Loaded, but wrapper failed to launch. You might want to try calling reload LLM. Failed with {}", err.to_string()))
-                    }
-                }
+    let manager_addr_copy = state.manager_addr.clone();
+
+    if let Some(new_llm) = state.available_llms.get(&id) {
+        let result = llm::LLMActivated::activate_llm(new_llm.value().clone(), manager_addr_copy).await;
+        // new_llm.load();
+        match result {
+            Ok(running) => {
+                println!("Inserting {id} into running LLMs");
+                state.activated_llms.insert(id, running);
+                Ok(())
+            },
+            Err(err) => {
+                Err("failed to launch {id} skipping".into())
+            }
+        }
+    } else {
+        Err("couldn't find matching llm".into())
+
+    }
+
+    //if let Some(llm) = state.available_llms.get(&id) {
+    //    match llm::LLMActivated::activate_llm(llm.value().clone(), state.manager_addr.clone()).await {
+    //        Ok(llm_activ) => {
+    //            match llm_activ.load().await {
+    //                Ok(_) => {
+    //                    state.activated_llms.insert(llm_activ.llm.id.clone(), llm_activ);
+    //                    Ok(())
+    //                },
+    //                Err(err) => {
+    //                    //For now we insert anyway and let the user call reload.
+    //                    state.activated_llms.insert(llm_activ.llm.id.clone(), llm_activ);
+    //                    Err(format!("LLM Actor Loaded, but wrapper failed to launch. You might want to try calling reload LLM. Failed with {}", err.to_string()))
+    //                }
+    //            }
+    //        },
+    //        Err(err) => Err(err.to_string())
+    //    }
+    //} else {
+    //    Err("Couldn't find LLM".into())
+    //}
+}
+
+
+#[derive(serde::Serialize)]
+pub struct CallLLMResponse {
+    pub session_id: String,
+    pub parameters: HashMap<String, Value>,
+    pub llm_info: LLMInfo,
+}
+
+
+#[tauri::command]
+pub async fn call_llm(id: String, message: String, user_parameters: HashMap<String, Value>, app: AppHandle, state: tauri::State<'_, state::GlobalState>) -> Result<CommandResponse<CallLLMResponse>, String> {
+    println!("frontend called {} with {} and params {:?}", id, message, user_parameters);
+    if let Some(llm) = state.activated_llms.get(&id) {
+        let uuid = Uuid::new_v4();
+        match llm.value().call_llm(&message, user_parameters).await {
+            Ok(llm_resp) => {
+
+                    tokio::spawn(async move {
+                        emitter::send_events("llm_response".into(), uuid.to_string(), llm_resp.stream.unwrap(), app, |stream_id, blah| {
+                            let event: emitter::EventType  = match blah {
+                                connectors::LLMEvent::PromptProgress { previous, next } => {
+                                    Ok(emitter::EventType::PromptProgress {
+                                        previous: previous,
+                                        next: next
+                                    })
+                                },
+                                connectors::LLMEvent::PromptCompletion { previous } => {
+                                    Ok(emitter::EventType::PromptCompletion {
+                                        previous: previous,
+                                    })
+                                },
+                                connectors::LLMEvent::PromptError { message } => {
+                                    Ok(emitter::EventType::PromptError {
+                                        message: message
+                                    })
+                                }
+
+                                other => {
+                                    Err("invalid event type")
+                                }
+
+                            }?;
+
+                            Ok(emitter::EventPayload {
+                                stream_id: stream_id,
+                                event: event,
+                            })
+
+                        })
+                    });
+
+                    Ok(CommandResponse {
+                    data: CallLLMResponse {
+                        session_id: uuid.to_string(),
+                        parameters: llm_resp.parameters,
+                        llm_info: llm.llm.as_ref().into()
+                    }})
             },
             Err(err) => Err(err.to_string())
         }
@@ -297,20 +413,10 @@ pub async fn load_llm(id: String, state: tauri::State<'_, state::GlobalState>) -
         Err("Couldn't find LLM".into())
     }
 }
-
 // #[tauri::command]
 // pub async fn unload_llm(id: String, state: tauri::State<'_, GlobalState>) -> Result<(), String> {
 //     state.unload_llm(id).await
 // }
 
-// #[tauri::command]
-// pub async fn download_llm(id: String, state: tauri::State<'_, GlobalState>) -> Result<(), String> {
-//     state.download_llm(id).await
-// }
-
-// #[tauri::command]
-// pub async fn download_llm(id: String, state: tauri::State<'_, GlobalState>) -> Result<(), String> {
-//     state.download_llm(id).await
-// }
 
 

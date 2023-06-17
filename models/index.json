@@ -1,16 +1,36 @@
 {
   "version": "0.0.1",
+  "name": "system default",
   "models": [
     {
-      "id": "alpaca0.7",
-      "name": "Alpaca",
-      "source": "github",
-      "path": "models/alpaca/alpaca0.7.ggml",
+      "id": "open_llama_7b-q5_1-ggjt",
+      "family_id": "llama",
+      "organization": "",
+
+      "name": "Open LLaMA GGML 7b",
+      "url": "https://huggingface.co/rustformers/open-llama-ggml/resolve/main/open_llama_7b-q5_1-ggjt.bin",
       "type": "ggml",
-      "connector": "ggml",
+      "connector": "llmrs",
       "create_thread": "true",
       "description": "description of the thing",
-      "licence": "MIT"
+      "requirements": "8GB Ram, spirit",
+      "licence": "Apache 2.0",
+      "tags": ["llama", "llm"],
+
+      "capabilities": {
+        "TEXT_COMPLETION": 3,
+        "CONVERSATION": 3,
+        "FREE": 1
+      },
+
+      "config": {
+        "model_architecture":"llama"
+      },
+      "parameters": {
+        "top_k": 50
+      },
+
+      "user_parameters": ["top_k", "top_p", "repeat_penalty", "temperature"]
     }
   ]
 }

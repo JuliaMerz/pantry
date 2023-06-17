@@ -2,15 +2,54 @@
 
 Pantry is a user wrapper on top of LLM Chain, designed as a system service exposing LLMs to other programs.
 
+# Project Goals
+Make LLM computing accessible by building a comprehensive model repository.
+Push LLM computation to the edge, in alignment with the [ggml project](http://ggml.ai/).
+Give developers an easy way to integrate LLMs in a model agnostic way.
+Push forward edge-LLMs by providing the tools to better test, measure, and compare them.
+Allow system administrators to set up local LLMs for their users by running a repository.
+
 # Why?
 
-Pantry is designed for a future where LLMs are run primarily locally, on a user's laptop. We're already seeing
-major companies forbid their employees from using ChatGPT due to data exfiltration concerns. In such a future,
-having many applications on a laptop running cutting edge LLM's is memory-prohibitive. Instead, Pantry
-is designed to allow applications to query a local LLM. This enables applciations to add LLM features without
-implementing a full LLM stack, something useful from both a development-complexity and resource-efficiency
-perspective.
+Pantry is designed to for a future where LLMs are run primarily locally. The expectation that
+users outsource their data and their work to a distant API like ChatGPT is unrealistic in the long term.
+However, having every local application run their own LLM is just as unrealistic. There needs to
+be an easy way for local software to query LLMs, and an easy way for users to download and share
+local LLMs.
 
+# Components
+## Model Runner
+Pantry will load models into memory and allow outside programs to access them via a local
+web API, [window.ai] Server Spec, or via socket.
+
+## Model Repository
+Pantry allows users to create and add their own repository of models. For now we're
+also creating a default one.
+
+## Direct Interface
+The UI also provides a direct interface to directly test and query the models.
+
+
+# How You Can Help
+## Add Models
+Know of a model that we don't have in the registry yet? Make a pull request! You can find the
+standard format in this readme, or look at the existing json for examples.
+
+## UI Cleanup
+I'm not a designer! If something is ugly, please help us make it more pretty.
+
+## Rust Cleanup
+I'm actually a python web gal, not a systems Rust. If you're familiar with idiomatic rust and
+you're browsing the code going "ewwww," please submit a PR to help us fix it!
+
+## Testing
+Right now all of our code is tested by Rust's type checker. This is not a great state of things.
+Particularly around the interface between Rust's typeing and TypeScript's typing would be a great
+place for some tests. If you've never contributed to open source before, this is a great start!
+
+## Test Runner (bigger project)
+Capability evaluation right now is mostly human. We'd like to be able to test them in a generic way,
+so a test harness that runs a standardized test for differing capabilities would be killer.
 ## Brew
 
 ## Usage

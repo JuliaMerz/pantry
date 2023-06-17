@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/tauri';
+import Link from '@mui/material/Link';
 import { LLMAvailable, toLLMAvailable } from '../interfaces';
 import LLMInfo from '../components/LLMInfo';
 
@@ -28,8 +29,12 @@ function AvailableLLMs() {
     <div>
       <h1>Available Large Language Models</h1>
       {availableLLMs.map((llm) => (
-        <LLMInfo key={llm.id} {...llm} />
-      ))}
+        <div className="card available-llm">
+          <LLMInfo key={llm.id} llm={llm}  />
+          <Link href={"/history/"+llm.id}>Last Called: {llm.lastCalled ? llm.lastCalled.toString() : "Never"}</Link>
+        <div><small>Downloaded: {llm.downloaded}</small></div>
+        </div>
+        ))}
     </div>
   );
 }

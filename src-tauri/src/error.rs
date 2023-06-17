@@ -11,7 +11,7 @@ quick_error! {
         LLMNotRunning {
             display("LLM Not Running")
         }
-        LLMStartupFailed (err: ActorError) {
+        ActorFailure (err: ActorError) {
             display("ActorError failure: {}", err)
             from()
         }

@@ -1,4 +1,5 @@
 use crate::{connectors, error::PantryError};
+use serde_json::Value;
 use crate::connectors::{SysEvent};
 use tiny_tokio_actor::*;
 use std::collections::HashMap;
@@ -23,7 +24,7 @@ impl Actor<SysEvent> for LLMManagerActor {}
 
 // Message to create a new LLMActor
 #[derive(Clone, Debug)]
-pub struct CreateLLMActorMessage(pub String, pub connectors::LLMConnectorType, pub Vec<(String, String)>);
+pub struct CreateLLMActorMessage(pub String, pub connectors::LLMConnectorType, pub HashMap<String, Value>);
 // id, connector type, config[]
 
 impl Message for CreateLLMActorMessage {
@@ -32,8 +33,8 @@ impl Message for CreateLLMActorMessage {
 // (llm_id, create_thread, config)
 
 #[derive(Clone, Debug)]
-pub struct Ping();
-impl Message for Ping {
+pub struct PingMessage();
+impl Message for PingMessage {
     type Response = Result<Vec<String>, PantryError>;
 }
 
@@ -53,11 +54,12 @@ impl Handler<SysEvent, CreateLLMActorMessage> for LLMManagerActor {
         println!("Running createllmactor handler");
 
         let conn: connectors::LLMConnectorType = msg.1.clone();
-        let connection = connectors::get_new_llm_connector(conn.clone());
+        let connection = connectors::get_new_llm_connector(conn.clone(), msg.2.clone());
         let llm_act = LLMActor {
             loaded: false, //LLM actors need to have init called on them
             llm_internal: connection,
             llm_connector: conn.clone(),
+            config: msg.2.clone(),
         };
 
         match ctx.get_or_create_child(&msg.0, || llm_act).await {
@@ -66,7 +68,7 @@ impl Handler<SysEvent, CreateLLMActorMessage> for LLMManagerActor {
                 self.active_llm_actors.insert(msg.0.clone(), act_ref.clone());
                 Ok(act_ref)
             }
-            Err(act_er) => Err(PantryError::LLMStartupFailed(act_er))
+            Err(act_er) => Err(PantryError::ActorFailure(act_er))
         }
 
     }
@@ -88,8 +90,8 @@ impl Handler<SysEvent, CreateLLMActorMessage> for LLMManagerActor {
 
 
 #[async_trait]
-impl Handler<SysEvent, Ping> for LLMManagerActor {
-    async fn handle(&mut self, msg: Ping, _ctx: &mut ActorContext<SysEvent>) -> Result<Vec<String>, PantryError>{
+impl Handler<SysEvent, PingMessage> for LLMManagerActor {
+    async fn handle(&mut self, msg: PingMessage, _ctx: &mut ActorContext<SysEvent>) -> Result<Vec<String>, PantryError>{
         let mut ve:Vec<String> = Vec::new();
         for (key, _) in self.active_llm_actors.clone().into_iter() {
             ve.push(key.clone());

@@ -1,24 +1,45 @@
 // src/interfaces.ts
-//
+
 interface LLM  {
   id: string;
+  family_id: string;
+  organization: string;
+
   name: string;
   description: string;
+  requirements: string;
+  licence: string;
+  user_parameters: string[];
+
+  capabilities: {[id: string]: number};
+
+  parameters: {[id: string]: string};
+  config: {[id: string]: string};
+  connector_type: string;
+
+  url: string;
+
+  //backend info we maybe don't need
+  type: string;
+  connector: string;
+  create_thread: string;
 };
 
 interface LLMAvailable extends LLM {
   downloaded: string;
-  lastCalled: Date;
+  lastCalled: Date | null;
 }
-interface LLMActive extends LLMAvailable {
+interface LLMRunning extends LLMAvailable {
   activated: string;
 }
 
-enum LLMRegistryEntrySource{
-  GitHub = "github",
-  External = "external",
-
+interface LLMResponse {
+    response: string, //Actual text response
+    parameters: {[id: string]: string};
+    llm: LLM, //LLM used
 }
+
+
 
 enum LLMRegistryEntryConnector {
   Ggml = "ggml",
@@ -28,35 +49,47 @@ enum LLMRegistryEntryConnector {
 interface LLMRegistry {
   id: string,
   url: string,
+  models: LLMRegistryEntry[],
+}
+
+interface LLMRegistryRegistry {
+  [url: string]: LLMRegistry
+}
+
+enum LLMDownloadState {
+  NotDownloaded,
+  Downloading,
+  Downloaded,
 }
 
 interface LLMRegistryEntry {
-    id: string,
-    name: string,
-    source: LLMRegistryEntrySource, //maybe enum
-    path: string,
-    type: string
-    connector: LLMRegistryEntryConnector
-    create_thread: boolean,
-    description: string,
-    licence: string,
-    parameters: LLMRegistry[],
-    user_parameters: string[],
+  id: string;
+  family_id: string;
+  organization: string;
+  name: string;
+  path: string;
+  type: string;
+  download_state: LLMDownloadState;
+  backend_uuid: string;
+  connector: LLMRegistryEntryConnector;
+  create_thread: boolean;
+  description: string;
+  licence: string;
+  parameters: {[id: string]: string};
+  user_parameters: string[];
+  capabilities: {[id: string]: number};
+  tags: string[],
+  url: string;
+  config: {[id: string]: string};
+  requirements: string;
 }
 
-enum LLMSource {
-  Github = "github",
-  External = "external"
-}
-
-
-interface LLMDownloadable extends LLM {
-  // Source should basically always be github, unless we develop a... okay fine.
-  source: LLMSource,
-  path: string,
-  type: string,
-  license: string,
-
+async function toLLMRegistryEntry(remoteData: any): Promise<LLMRegistryEntry> {
+  return {
+    ...remoteData,  // this will spread all the existing fields from the remoteData
+    backend_uuid: "",  // uuid populated later when download starts
+    download_state: LLMDownloadState.NotDownloaded  // initially, it's not downloaded
+  };
 }
 
 enum LLMRequestType {
@@ -65,16 +98,15 @@ enum LLMRequestType {
   Unload = "unload"
 }
 
-interface LLMRequest extends LLM{
+interface LLMRequest extends LLM {
   type: LLMRequestType,
-  requester: string,
+  requester: string, // This is a uuid
   [addlInfo: string]: unknown
 }
 
 interface LLMDownloadRequest extends LLMRequest {
   type: LLMRequestType.Download,
-  source: LLMSource,
-  url: string
+  entry: LLMRegistryEntry,
 }
 
 interface LLMLoadRequest extends LLMRequest {
@@ -129,47 +161,69 @@ const keysToCamelUnsafe = function (o:any) {
 export type {
   LLM,
   LLMAvailable,
-  LLMActive,
+  LLMRunning,
+  LLMResponse,
   LLMRequest,
-  LLMDownloadable,
   LLMDownloadRequest,
   LLMLoadRequest,
-  LLMUnloadRequest
+  LLMUnloadRequest,
+  LLMRegistry,
+  LLMRegistryRegistry,
+  LLMRegistryEntry,
 }
 export {
   LLMRequestType,
-  LLMSource,
   keysToCamelUnsafe,
+  LLMDownloadState,
+  LLMRegistryEntryConnector,
 }
 
 function toLLM(rustLLM: any): LLM {
   return {
-    id: rustLLM.llm_info.id,
-    name: rustLLM.llm_info.name,
-    description: rustLLM.llm_info.description,
-  };
+    id: rustLLM.id,
+    family_id: rustLLM.family_id,
+    organization: rustLLM.organization,
+    name: rustLLM.name,
+    description: rustLLM.description,
+    parameters: rustLLM.parameters,
+    user_parameters: rustLLM.user_parameters,
+    capabilities: rustLLM.capabilities,
+
+    config: rustLLM.config,
+    connector_type: rustLLM.connector_type,
+  }
 }
 
 function toLLMAvailable(rustLLMAvailable: any): LLMAvailable {
   return {
-    ...toLLM(rustLLMAvailable),
+    ...toLLM(rustLLMAvailable.llm_info),
     downloaded: rustLLMAvailable.downloaded,
-    lastCalled: new Date(rustLLMAvailable.last_called.time),
+    lastCalled: rustLLMAvailable.lastCalled ? new Date(rustLLMAvailable.last_called.time) : null,
   };
 }
 
-function toLLMActive(rustLLMRunning: any): LLMActive {
+function toLLMRunning(rustLLMRunning: any): LLMRunning {
   return {
     ...toLLMAvailable(rustLLMRunning),
     activated: rustLLMRunning.activated,
   };
 }
 
+function toLLMResponse(rustLLMResponse: any): LLMResponse {
+  console.log(rustLLMResponse.parameters);
+  return {
+    llm: toLLM(rustLLMResponse.llm_info),
+    response: rustLLMResponse.response,
+    parameters: rustLLMResponse.parameters
+  }
+
+}
+
 function toLLMRequest(rustLLMRequest: any): LLMRequest {
   const type = rustLLMRequest.type.toLowerCase() as LLMRequestType;
 
   const baseRequest: LLMRequest = {
-    ...toLLM(rustLLMRequest),
+    ...toLLM(rustLLMRequest.llm_info),
     type: type,
     requester: rustLLMRequest.requester,
   };
@@ -185,5 +239,5 @@ function toLLMRequest(rustLLMRequest: any): LLMRequest {
   return baseRequest;
 }
 
-export { toLLM, toLLMAvailable, toLLMActive, toLLMRequest };
+export { toLLM, toLLMAvailable, toLLMRunning, toLLMRequest, toLLMResponse, toLLMRegistryEntry };
 
