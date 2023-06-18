@@ -20,9 +20,7 @@ interface LLM  {
   url: string;
 
   //backend info we maybe don't need
-  type: string;
-  connector: string;
-  create_thread: string;
+  create_thread: boolean;
 };
 
 interface LLMAvailable extends LLM {
@@ -43,6 +41,7 @@ interface LLMResponse {
 
 enum LLMRegistryEntryConnector {
   Ggml = "ggml",
+  LLMrs = "llmrs",
   OpenAI = "openai"
 }
 
@@ -67,11 +66,10 @@ interface LLMRegistryEntry {
   family_id: string;
   organization: string;
   name: string;
-  path: string;
-  type: string;
+  homepage: string;
   download_state: LLMDownloadState;
   backend_uuid: string;
-  connector: LLMRegistryEntryConnector;
+  connector_type: LLMRegistryEntryConnector;
   create_thread: boolean;
   description: string;
   licence: string;

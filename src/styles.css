@@ -67,3 +67,30 @@ h5 {
   margin-bottom: 0px;
 
 }
+
+.form-modal {
+  overflow: scroll;
+}
+
+.form-modal .form-div{
+  margin: 10px 200px;
+  padding: 10px 20px;
+  background: var(--color-bg-alt);
+}
+
+.form-div .input-field {
+  margin: 6px;
+}
+
+.form-div h6 {
+  margin: 0px;
+  margin-top: 5px;
+  font-weight: 400;
+  font-size: 0.7em;
+}
+
+.form-div .input-field p {
+  margin-top: -7px !important;
+  background-color: var(--color-bg-alt);
+  width: fit-content;
+}

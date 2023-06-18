@@ -9,9 +9,9 @@
 
       "name": "Open LLaMA GGML 7b",
       "url": "https://huggingface.co/rustformers/open-llama-ggml/resolve/main/open_llama_7b-q5_1-ggjt.bin",
-      "type": "ggml",
+      "homepage": "https://huggingface.co/rustformers/open-llama-ggml/",
       "connector": "llmrs",
-      "create_thread": "true",
+      "create_thread": true,
       "description": "description of the thing",
       "requirements": "8GB Ram, spirit",
       "licence": "Apache 2.0",

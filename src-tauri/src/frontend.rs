@@ -198,7 +198,7 @@ pub async fn available_llms(state: tauri::State<'_, state::GlobalState>) -> Resu
 
 
 #[tauri::command]
-fn download_llm(llm_reg: registry::LLMRegistryEntry, app: tauri::AppHandle, state: tauri::State<'_, state::GlobalState>) -> Result<CommandResponse<String>, String> {
+pub fn download_llm(llm_reg: registry::LLMRegistryEntry, app: tauri::AppHandle, state: tauri::State<'_, state::GlobalState>) -> Result<CommandResponse<String>, String> {
 
     let uuid = Uuid::new_v4();
 
@@ -215,7 +215,7 @@ fn download_llm(llm_reg: registry::LLMRegistryEntry, app: tauri::AppHandle, stat
 
 // This command refreshes the registry entries stored in state
 #[tauri::command]
-fn refresh_settings(app: tauri::AppHandle, stores: tauri::State<StoreCollection<Wry>>) -> Result<(), String>{
+pub fn refresh_settings(app: tauri::AppHandle, stores: tauri::State<StoreCollection<Wry>>) -> Result<(), String>{
 
     let path = PathBuf::from(".settings.dat");
 

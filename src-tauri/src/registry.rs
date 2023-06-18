@@ -61,13 +61,12 @@ pub struct LLMRegistryEntry {
     pub family_id: String,
     pub organization: String,
     pub name: String,
-    pub path: String,
-    pub entry_type: String,
+    pub homepage: String,
     pub backend_uuid: String,
     pub create_thread: bool,
     pub description: String,
     pub licence: String,
-    pub connector: LLMRegistryEntryConnector,
+    pub connector_type: LLMRegistryEntryConnector,
     pub parameters: HashMap<String, Value>,
     pub user_parameters: Vec<String>,
     pub capabilities: HashMap<String, isize>,
@@ -157,7 +156,7 @@ pub async fn download_and_write_llm(
             requirements: llm_reg.requirements.clone(),
 
             create_thread: llm_reg.create_thread.clone(),
-            connector_type: llm_reg.connector.clone().into(), // assuming this type is also Clone
+            connector_type: llm_reg.connector_type.clone().into(), // assuming this type is also Clone
             config: llm_reg.config.clone(),
             parameters: llm_reg.parameters.clone(),
             user_parameters: llm_reg.user_parameters.clone(),

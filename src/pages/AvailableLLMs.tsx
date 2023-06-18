@@ -4,7 +4,8 @@ import React, { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/tauri';
 import Link from '@mui/material/Link';
 import { LLMAvailable, toLLMAvailable } from '../interfaces';
-import LLMInfo from '../components/LLMInfo';
+import LLMAvailableInfo from '../components/LLMAvailableInfo';
+import Switch from '@mui/material/Switch';
 
 function AvailableLLMs() {
   const [availableLLMs, setAvailableLLMs] = useState<LLMAvailable[]>([]);
@@ -25,15 +26,14 @@ function AvailableLLMs() {
     fetchAvailableLLMs();
   }, []);
 
+
+
+
   return (
     <div>
       <h1>Available Large Language Models</h1>
       {availableLLMs.map((llm) => (
-        <div className="card available-llm">
-          <LLMInfo key={llm.id} llm={llm}  />
-          <Link href={"/history/"+llm.id}>Last Called: {llm.lastCalled ? llm.lastCalled.toString() : "Never"}</Link>
-        <div><small>Downloaded: {llm.downloaded}</small></div>
-        </div>
+        <LLMAvailableInfo llm={llm} key={llm.id}/>
         ))}
     </div>
   );

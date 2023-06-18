@@ -2,6 +2,13 @@
 import Link from '@mui/material/Link';
 
 import Switch from '@mui/material/Switch';
+import Table from '@mui/material/Table';
+import Paper from '@mui/material/Paper';
+import TableBody from '@mui/material/TableBody';
+import TableCell from '@mui/material/TableCell';
+import TableContainer from '@mui/material/TableContainer';
+import TableHead from '@mui/material/TableHead';
+import TableRow from '@mui/material/TableRow';
 
 import React, { useState, useEffect } from 'react';
 import { useCollapse } from 'react-collapsed';
@@ -71,9 +78,10 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
 
   };
 
-  const handleToggle = () => {
+  const handleToggle = async () => {
     console.log("Disable the LLM");
     setChecked(!checked);
+    const result = await invoke('unload_llm', {id: llm.id});
   };
 
   const handleParameterChange = (name: string, value: string) => {
@@ -87,7 +95,7 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+    e.prevenTableCellefault();
 
     invoke('call_llm', { id: llm.id, message: message, userParameters: userParametersState}).then((response) => {
       const resp = toLLMResponse((response as any).data)
@@ -118,7 +126,7 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
 
   return (
     <div className="card live-llm" >
-      <LLMInfo llm={llm} />
+      <LLMInfo llm={llm} rightButton={<Switch defaultChecked checked={checked} onClick={handleToggle}/> }/>
       <Link href={"/history/"+llm.id}>Last Called: {llm.lastCalled? llm.lastCalled.toString() : "Never"}</Link>
     <div className="collapse-wrapper" >
     <div className="collapser" {...getToggleProps()}>{isExpanded ? '▼ Collapse Interface' : '▶ Expand Interface'}</div>
@@ -127,16 +135,16 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
           {history.map((item, index) => (
             <div className="llm-history-item" key={index}>
             {Object.keys(item.parameters).length > 0 ? (
-              <table>
-                <thead><td>Parameter</td><td>Value</td></thead>
-                <tbody>
-              {Object.entries(item.parameters).map(([paramName, paramValue], index) => {console.log(item.parameters); return (<tr>
-                                                          <td>{paramName}</td>
-                                                          <td>{paramValue}</td>
-                                                          </tr>
-                                                         );})
+              <TableContainer component={Paper}><Table size="small" className="llm-details-table" aria-label="llm details">
+                <TableHead><TableCell>Parameter</TableCell><TableCell>Value</TableCell></TableHead>
+                <TableBody>
+              {Object.entries(item.parameters).map(([paramName, paramValue], index) => {console.log(item.parameters); return (<TableRow>
+                        <TableCell>{paramName}</TableCell>
+                        <TableCell>{paramValue}</TableCell>
+                        </TableRow>
+                       );})
               }
-               </tbody></table>
+               </TableBody></Table></TableContainer>
               ) : (null)
             }
                <div className="input">{item.input}</div>

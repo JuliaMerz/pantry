@@ -26,7 +26,6 @@ function Home() {
   return (
     <div>
       <h1>Home</h1>
-      {console.log(activeLlms)}
       {activeLlms.map((llm) => (
         <LLMRunningInfo key={llm.id} llm={llm} />
       ))}

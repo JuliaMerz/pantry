@@ -1,6 +1,9 @@
 // src/components/LLMDownloadableInfo.tsx
 
 import React from 'react';
+import { invoke } from '@tauri-apps/api/tauri';
+import LLMInfo from './LLMInfo';
+import Button from '@mui/material/Button';
 import { LLMRegistry, LLMRegistryEntry } from '../interfaces';
 
 interface LLMDownloadableInfoProps {
@@ -9,27 +12,20 @@ interface LLMDownloadableInfoProps {
 }
 
 const LLMDownloadableInfo: React.FC<LLMDownloadableInfoProps> = ({ llm }) => {
+  const downloadClick = async () => {
+    console.log("sending off the llm reg", llm);
+    const result = await invoke('download_llm', {llmReg: llm});
+
+  }
   return (
-    <div className="card split available-llm">
-      <div className="left">
-        <h2>{llm.name} <small>({llm.id})</small></h2>
-        <div>{llm.description}</div>
-        <div><b>URL:</b> {llm.url}</div>
-        <div><b>Type:</b> {llm.type}</div>
-        <div><b>Connector:</b> {llm.connector}</div>
-        <div><b>Create Thread:</b> {llm.create_thread}</div>
-        <div><b>Requirements:</b> {llm.requirements}</div>
-        <div className="flex-row">
-          <div><b>License:</b> {llm.licence}</div>
-          <div><b>Capabilities:</b> {JSON.stringify(llm.capabilities)}</div>
-          <div><b>Parameters:</b> {JSON.stringify(llm.parameters)}</div>
-          <div><b>User Parameters:</b> {llm.user_parameters.join(", ")}</div>
-          <div><b>Config:</b> {JSON.stringify(llm.config)}</div>
-        </div>
-      </div>
-      <div className="right">
-        <button>Download</button>
-      </div>
+
+    <div className="card available-llm">
+      <LLMInfo llm={llm} rightButton={<Button variant="contained" onClick={downloadClick} >Download</Button>} />
+      <div><b>Requirements:</b> {llm.requirements}</div>
+      <div><b>User Parameters:</b> {llm.user_parameters.join(", ")}</div>
+      <div><b>Capabilities:</b> {JSON.stringify(llm.capabilities)}</div>
+      <div><b>Parameters:</b> {JSON.stringify(llm.parameters)}</div>
+      <div><b>Config:</b> {JSON.stringify(llm.config)}</div>
     </div>
   );
 };

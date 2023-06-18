@@ -2,6 +2,10 @@
 
 import React, { useEffect, useState } from 'react';
 import Grid from '@mui/material/Grid';
+import Select from '@mui/material/Select';
+import MenuItem from '@mui/material/MenuItem';
+import Checkbox from '@mui/material/Checkbox';
+import FormControlLabel from '@mui/material/FormControlLabel';
 import Button from '@mui/material/Button';
 import Paper from '@mui/material/Paper';
 import Modal from '@mui/material/Modal';
@@ -13,21 +17,28 @@ import LLMDownloadableInfo from '../components/LLMDownloadableInfo';
 
 const LLM_INFO_SOURCE = "https://raw.githubusercontent.com/JuliaMerz/pantry/master/models/index.json";
 
+const REGISTRIES_STORAGE_KEY = "registries5";
+
 function DownloadableLLMs() {
   const [downloadableLLMs, setDownloadableLLMs] = useState<[LLMRegistryEntry, LLMRegistry][]>([]);
   const [registries, setRegistries] = useState<any>([]);
 
   async function getRegistries(): Promise<LLMRegistryRegistry> {
-    return store.get("registries").
+    return store.get(REGISTRIES_STORAGE_KEY).
       then(async (registries:any) => {
         if (!registries) {
           console.log("Didn't find registries, adding");
           // would do setRegistries([]) but it's the default
-          await store.set("registries", {local: []})
+          const local: LLMRegistry = {
+            id: "local",
+            url: "local",
+            models: []
+          }
+          await store.set(REGISTRIES_STORAGE_KEY, {local: local})
           await store.save()
           let defaultReg: LLMRegistry = {
             id: 'default',
-            url: 'LLM_INFO_SOURCE',
+            url: LLM_INFO_SOURCE,
             models: []
           }
           await addRegistry(defaultReg.id, defaultReg.url);
@@ -40,11 +51,11 @@ function DownloadableLLMs() {
     }).catch(async (err:any) => {
           console.log("Didn't find registries, adding");
           // would do setRegistries([]) but it's the default
-          await store.set("registries", {local: []})
+          await store.set(REGISTRIES_STORAGE_KEY, {local: []})
           await store.save()
           let defaultReg: LLMRegistry = {
             id: 'default',
-            url: 'LLM_INFO_SOURCE',
+            url: LLM_INFO_SOURCE,
             models: []
           }
           await addRegistry(defaultReg.id, defaultReg.url);
@@ -65,17 +76,23 @@ function DownloadableLLMs() {
       url: url,
       models: [],
     };
+    console.log("Running add registry");
 
     // Fetch data from the new URL and extract models
     const response = await fetch(url);
-    const remoteData = await (response as any).json(); //it's upset about the .json()
-    const models = remoteData.models;
+    console.log(response);
+    const remoteData = response.data as any;
+    const models = remoteData.models as LLMRegistryEntry[];
+    console.log("models:", models);
+
 
     // Convert each model to an LLMRegistryEntry and add it to the registryEntries array
     for (const model of models) {
+      console.log("pushign a model");
       const registryEntry:LLMRegistryEntry = await toLLMRegistryEntry(model);
       newReg.models.push(registryEntry);
     }
+
 
     // Save the updated registryEntries to the store
 
@@ -91,7 +108,7 @@ function DownloadableLLMs() {
     }
 
     console.log("Updating store registries");
-    await store.set("registries", registries);
+    await store.set(REGISTRIES_STORAGE_KEY, registries);
     await store.save();
 
     setRegistries(registries)
@@ -100,7 +117,9 @@ function DownloadableLLMs() {
   useEffect(() => {
     const downloadableLLMs: [LLMRegistryEntry, LLMRegistry][] = [];
     getRegistries().then((regs) => {
-      for (let reg_key in Object.keys(regs)) {
+      console.log("registries:", regs);
+      for (let reg_key of Object.keys(regs)) {
+        console.log("reg key {}, regs  models {}", reg_key, regs[reg_key])
         downloadableLLMs.push(...(regs[reg_key].models.map((reg_entry): [LLMRegistryEntry, LLMRegistry] => [reg_entry, regs[reg_key]])));
         setDownloadableLLMs(downloadableLLMs);
       }
@@ -125,11 +144,10 @@ function DownloadableLLMs() {
     name: '',
     family_id: '',
     organization: '',
-    path: '',
-    type: '',
+    homepage: '',
     download_state: LLMDownloadState.NotDownloaded,
     backend_uuid: '',
-    connector: LLMRegistryEntryConnector.Ggml, // provide a default value based on your LLMRegistryEntryConnector enum
+    connector_type: LLMRegistryEntryConnector.Ggml, // provide a default value based on your LLMRegistryEntryConnector enum
     create_thread: false,
     description: '',
     requirements:'',
@@ -140,15 +158,32 @@ function DownloadableLLMs() {
     tags: [],
     url: '',
     config: {}, // initialize with default config object
-    requirements: '',
   }}
   const [newRegistryEntry, setNewRegistryEntry] = useState<LLMRegistryEntry>(produceEmptyRegistryEntry());
 
 
+  const newRegistryHelperText = {
+    id: 'Technical Id, like openai-ada-high-temp-1',
+    name: 'Human readable name',
+    family_id: 'Family Id, ex "openai" or "llama"',
+    organization: 'Human readable organization. Could be a github user.',
+    homepage: 'URL for more information, like a HuggingFace page.',
+    connector: 'Connector pantry needs to use to run this. When in doubt, probably GGML.',
+    create_thread: 'Yes if the model runs locally.',
+    description: 'Human readable description of the model.',
+    requirements:'Human readable—how much ram? GPU? etc.',
+    licence: 'MIT/Apache 2.0/etc.',
+    parameters: 'Parameters set by the config, for ex hardcoded temperature.',
+    user_parameters: 'Parameters settable by the user when they call this model.',
+    capabilities: 'Rated capabilities-Find the standard capabilities on the pantry github, and apply ratings to them. Capabilities left empty will be stored as "unrated". 0 represents "not capable".',
+    tags: 'Comma separated tags, ex: "openai, gpt, conversational, remote"',
+    url: 'Download URL for the model. Should be a ggml file atm.',
+    config: 'Config to run the model. See pantry/github readme for details on what\'s required.',
+  }
   const validateNewRegistryEntry = (): boolean => {
     return Object.keys(newRegistryErrors).length == 0
   }
-  const handleAddRegistry = async () => {
+  const handleAddRegistryEntry = async () => {
     if (validateNewRegistryEntry()) {
       // Fetch the local registry and add the new entry
       const localRegistry:any = await store.get("local") || {};
@@ -173,6 +208,16 @@ function DownloadableLLMs() {
 
   const [newRegistryErrors, setNewRegistryErrors] = useState<{ [key: string]: string }>({});
   const capitalizeFirstLetter = (string: string) => string.charAt(0).toUpperCase() + string.slice(1);
+
+  const handleCheckboxInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const { name } = event.target;
+    setNewRegistryEntry({
+      ...newRegistryEntry,
+      [name]: !newRegistryEntry[name as keyof LLMRegistryEntry]
+    })
+    //We skip error checking because it's a _checkbox_
+  }
+
 
   const handleRegistryInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = event.target;
@@ -250,20 +295,44 @@ function DownloadableLLMs() {
     <div>
       <h1>Downloadable Large Language Models</h1>
        <Button variant="contained" color="primary" onClick={() => setModalOpen(true)}>
-        Add Registry
+        Add Registry Entry
       </Button>
       {downloadableLLMs.map((pair) => (
         <LLMDownloadableInfo key={pair[0].id} llm={pair[0]} registry={pair[1]} />
       ))}
-      <Modal open={isModalOpen} onClose={() => setModalOpen(false)}>
-        <div className="new-llm-registry-entry-form">
+      <Modal open={isModalOpen} className="form-modal" onClose={() => setModalOpen(false)}>
+        <div className="new-llm-registry-entry-form form-div">
           <h2>Add a new Registry Entry</h2>
           <Grid item xs={12}>
             {Object.keys(newRegistryEntry).map((key) =>
-              key !== "config" && key !== "parameters" && key !== "capabilities" && (
-                <TextField
+              key !== "config" && key !== "parameters" && key !== "capabilities" && key !== "backend_uuid" && key !== "download_state" && (typeof newRegistryEntry[key as keyof LLMRegistryEntry] === "boolean" ? (
+
+        <FormControlLabel labelPlacement="start" control={<Checkbox
+checked={newRegistryEntry[key as keyof LLMRegistryEntry] as boolean}
+          onChange={handleCheckboxInputChange}
+          name={key}
+          color="primary"
+        />} label={capitalizeFirstLetter(key)} />
+
+      ) : key === "connector" ? (
+
+        <FormControlLabel labelPlacement="start" control={
+        <Select
+          value={newRegistryEntry[key as keyof LLMRegistryEntry]}
+          onChange={handleRegistryInputChange}
+          name={key}
+        >
+          <MenuItem value="ggml">GGML</MenuItem>
+          <MenuItem value="openai">OpenAI</MenuItem>
+        </Select>
+        } label={capitalizeFirstLetter(key)} />
+
+      ) : (
+
+              <TextField
+                  className="input-field"
                   error={!!newRegistryErrors[key]}
-                  helperText={newRegistryErrors[key]}
+                  helperText={newRegistryErrors[key] ? newRegistryErrors[key] : newRegistryHelperText[key]}
                   fullWidth
                   name={key}
                   label={capitalizeFirstLetter(key)}
@@ -271,65 +340,69 @@ function DownloadableLLMs() {
                   onChange={handleRegistryInputChange}
                 />
               )
-            )}
-            {/* Dynamic fields for config, parameters and capabilities */}
+            ))}
             {["capabilities"].map((key) =>
-              (newRegistryEntry[key as keyof LLMRegistryEntry] as string[]).map((subKey, index) => (
+              [<h6>{newRegistryHelperText[key]}</h6>,
+              (Object.keys(dynamicKeyValuePairs[key as NumericField])).map((subKey, index) => (
                 <Grid container item xs={12} key={index}>
                   <Grid item xs={6}>
                     <TextField
+                      className="input-field"
                       error={!!newRegistryErrors[`${key}Key${index}`]}
-                      helperText={newRegistryErrors[`${key}Key${index}`]}
+                      helperText={newRegistryErrors[`${key}Value${index}`]}
                       fullWidth
-                      value={subKey}
+                      value={dynamicKeyValuePairs[key as NumericField][index][0]}
                       label={`${capitalizeFirstLetter(key)} Key ${index + 1}`}
                       onChange={(e:any) => handleNumericKeyValueChange(e, index, key as NumericField, 0)}
                     />
                   </Grid>
                   <Grid item xs={6}>
                     <TextField
+                      className="input-field"
                       error={!!newRegistryErrors[`${key}Value${index}`]}
                       helperText={newRegistryErrors[`${key}Value${index}`]}
                       fullWidth
-                      value={(newRegistryEntry[key as keyof LLMRegistryEntry] as {[key: string]: string})[subKey]}
+                      value={dynamicKeyValuePairs[key as NumericField][index][0]}
                       label={`${capitalizeFirstLetter(key)} Value ${index + 1}`}
                       onChange={(e:any) => handleNumericKeyValueChange(e, index, key as NumericField, 1)}
                     />
                   </Grid>
                 </Grid>
-              ))
+              ))]
             )}
           </Grid>
 
             {["config", "parameters" ].map((key) =>
-              (newRegistryEntry[key as keyof LLMRegistryEntry] as string[]).map((subKey, index) => (
+              [<h6>{newRegistryHelperText[key]}</h6>,
+              (Object.keys(dynamicKeyValuePairs[key as StringField]) ).map((subKey, index) => (
                 <Grid container item xs={12} key={index}>
                   <Grid item xs={6}>
                     <TextField
+                      className="input-field"
                       error={!!newRegistryErrors[`${key}Key${index}`]}
                       helperText={newRegistryErrors[`${key}Key${index}`]}
                       fullWidth
-                      value={subKey}
+                      value={dynamicKeyValuePairs[key as StringField][index][0]}
                       label={`${capitalizeFirstLetter(key)} Key ${index + 1}`}
                       onChange={(e:any) => handleStringKeyValueChange(e, index, key as StringField, 0)}
                     />
                   </Grid>
                   <Grid item xs={6}>
                     <TextField
+                      className="input-field"
                       error={!!newRegistryErrors[`${key}Value${index}`]}
                       helperText={newRegistryErrors[`${key}Value${index}`]}
                       fullWidth
-                      value={(newRegistryEntry[key as keyof LLMRegistryEntry] as {[key: string]: string})[subKey]}
+                      value={dynamicKeyValuePairs[key as StringField][index][1]}
                       label={`${capitalizeFirstLetter(key)} Value ${index + 1}`}
                       onChange={(e:any) => handleStringKeyValueChange(e, index, key as StringField, 1)}
                     />
                   </Grid>
                 </Grid>
-              ))
+              ))]
             )}
-          </Grid>
 
-          <Button variant="contained" color="primary" onClick={handleAddRegistry}>
+          <Button variant="contained" color="primary" onClick={handleAddRegistryEntry}>
             Submit
           </Button>
         </div>

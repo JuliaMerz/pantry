@@ -2,41 +2,41 @@
 
 import React, { useEffect, useState } from 'react';
 import { LLMRequestInfo, LLMDownloadRequestInfo, LLMUnloadRequestInfo, LLMLoadRequestInfo } from '../components/LLMRequestInfo';
-import { LLMRequestType, LLMRequest, LLMSource, LLMDownloadRequest, LLMLoadRequest, LLMUnloadRequest } from '../interfaces';
+import { LLMRequestType, LLMRequest, LLMDownloadRequest, LLMLoadRequest, LLMUnloadRequest } from '../interfaces';
 
 function Requests() {
   const [requestedLLMs, setRequestedLLMs] = useState<LLMRequest[]>([]);
 
   useEffect(() => {
     // Replace with actual data fetching
-    const fakeData: LLMRequest[] = [
-      {
-        id: '1',
-        name: 'LLM 1',
-        description: 'Description 1',
-        source: LLMSource.Github,
-        type: LLMRequestType.Download,
-        requester: 'Requester 1',
-      },
-      {
-        id: '2',
-        name: 'LLM 2',
-        description: 'Description 2',
-        source: LLMSource.URL,
-        type: LLMRequestType.Download,
-        requester: 'Requester 2',
-      },
-      {
-        id: 'gpt_4',
-        name: 'LLM 2',
-        description: 'Description 2',
-        type: LLMRequestType.Load,
-        requester: 'Requester 2',
-      },
-      // More LLMs...
-    ];
+    // const fakeData: LLMRequest[] = [
+    //   {
+    //     id: '1',
+    //     name: 'LLM 1',
+    //     description: 'Description 1',
+    //     source: LLMSource.Github,
+    //     type: LLMRequestType.Download,
+    //     requester: 'Requester 1',
+    //   },
+    //   {
+    //     id: '2',
+    //     name: 'LLM 2',
+    //     description: 'Description 2',
+    //     source: LLMSource.URL,
+    //     type: LLMRequestType.Download,
+    //     requester: 'Requester 2',
+    //   },
+    //   {
+    //     id: 'gpt_4',
+    //     name: 'LLM 2',
+    //     description: 'Description 2',
+    //     type: LLMRequestType.Load,
+    //     requester: 'Requester 2',
+    //   },
+    //   // More LLMs...
+    // ];
 
-    setRequestedLLMs(fakeData);
+    // setRequestedLLMs(fakeData);
   }, []);
 
   return (
