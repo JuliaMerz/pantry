@@ -16,6 +16,7 @@ use crate::state;
 // connectors/registry.rs
 
 #[derive(Debug, PartialEq, serde::Serialize, serde::Deserialize, Clone)]
+#[serde(rename_all="lowercase")]
 pub enum LLMRegistryEntryConnector {
     Ggml,
     LLMrs,
@@ -61,11 +62,11 @@ pub struct LLMRegistryEntry {
     pub family_id: String,
     pub organization: String,
     pub name: String,
+    pub license: String,
     pub homepage: String,
     pub backend_uuid: String,
     pub create_thread: bool,
     pub description: String,
-    pub licence: String,
     pub connector_type: LLMRegistryEntryConnector,
     pub parameters: HashMap<String, Value>,
     pub user_parameters: Vec<String>,
@@ -101,15 +102,19 @@ pub async fn download_and_write_llm(
 
     let mut stream = response.bytes_stream();
 
-    let stream_id = format!("download-{}", uuid.to_string());
+    let stream_id = format!("{}-{}", llm_reg.id, uuid.to_string());
 
 
     //TODO: download progress for specific downloads
+    let mut update_counter = 0;
     while let Some(item) = stream.next().await {
         let chunk = item?;
         file.write_all(&chunk)?;
         downloaded += chunk.len() as u64;
-
+        update_counter += 1;
+        if update_counter % 100 != 1 {
+            continue;
+        }
 
         // If the total size of the object is known, calculate the percentage.
         if let Some(total_size) = total_size_opt {
@@ -142,6 +147,7 @@ pub async fn download_and_write_llm(
             family_id: llm_reg.family_id.clone(),
             organization: llm_reg.organization.clone(),
             name: llm_reg.name.clone(),
+            license: llm_reg.license.clone(),
             description: llm_reg.description.clone(),
             downloaded_reason: "some kind of user input".into(), //TODO: make this dynamic at some point
             downloaded_date: chrono::offset::Utc::now(),

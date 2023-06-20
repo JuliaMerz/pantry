@@ -73,6 +73,7 @@ pub struct LLM {
     // Human Info
     pub name: String,
     pub description: String,
+    pub license: String,
     pub downloaded_reason: String,
     pub downloaded_date: DateTime<Utc>,
     pub last_called: RwLock<Option<DateTime<Utc>>>,
@@ -119,6 +120,7 @@ impl Clone for LLM {
             family_id: self.family_id.clone(),
             organization: self.organization.clone(),
             name: self.name.clone(),
+            license: self.license.clone(),
             description: self.description.clone(),
             downloaded_reason: self.downloaded_reason.clone(),
             downloaded_date: self.downloaded_date.clone(),

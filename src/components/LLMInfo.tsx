@@ -48,7 +48,7 @@ const LLMInfo: React.FC<LLMInfoProps> = ({
         </div>
       </div>
       <div className="flex-row">
-        <div><b>License</b> {llm.licence}</div>
+        <div><b>License</b> {llm.license}</div>
         <div><b>Model Family</b> {llm.family_id}</div>
         <div><b>Organization</b> {llm.organization}</div>
       </div>

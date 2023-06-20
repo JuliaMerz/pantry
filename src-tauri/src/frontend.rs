@@ -196,9 +196,15 @@ pub async fn available_llms(state: tauri::State<'_, state::GlobalState>) -> Resu
     Ok(CommandResponse { data: available_llms })
 }
 
+#[derive(serde::Serialize)]
+pub struct DownloadResponse {
+    pub uuid: Uuid,
+    pub stream: String
+}
+
 
 #[tauri::command]
-pub fn download_llm(llm_reg: registry::LLMRegistryEntry, app: tauri::AppHandle, state: tauri::State<'_, state::GlobalState>) -> Result<CommandResponse<String>, String> {
+pub fn download_llm(llm_reg: registry::LLMRegistryEntry, app: tauri::AppHandle, state: tauri::State<'_, state::GlobalState>) -> Result<CommandResponse<DownloadResponse>, String> {
 
     let uuid = Uuid::new_v4();
 
@@ -210,7 +216,7 @@ pub fn download_llm(llm_reg: registry::LLMRegistryEntry, app: tauri::AppHandle, 
     // Here we need to download llm_reg.url
 
     //Honestly idk wtf this code is even doing. It's definitely not downloading an LLM.
-    Ok(CommandResponse { data: format!("{}-{}", id, uuid)})
+    Ok(CommandResponse { data: DownloadResponse {uuid: uuid, stream: format!("{}-{}", id, uuid)}})
 }
 
 // This command refreshes the registry entries stored in state

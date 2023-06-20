@@ -10,17 +10,46 @@ import Button from '@mui/material/Button';
 import Paper from '@mui/material/Paper';
 import Modal from '@mui/material/Modal';
 import TextField from '@mui/material/TextField';
+import { LinearProgress } from '@mui/material';
+
 import { Store } from "tauri-plugin-store-api";
 import { fetch } from '@tauri-apps/api/http';
-import { LLMRegistryRegistry, LLMRegistry, LLMRegistryEntry, toLLMRegistryEntry, LLMDownloadState, LLMRegistryEntryConnector} from '../interfaces';
+import { listen } from '@tauri-apps/api/event'
+import { invoke } from '@tauri-apps/api/tauri';
+
+import { LLMRegistryRegistry, LLMRegistry, LLMRegistryEntry, toLLMRegistryEntry, LLMDownloadState, LLMRegistryEntryConnector, LLMAvailable, toLLMAvailable } from '../interfaces';
 import LLMDownloadableInfo from '../components/LLMDownloadableInfo';
 
 const LLM_INFO_SOURCE = "https://raw.githubusercontent.com/JuliaMerz/pantry/master/models/index.json";
 
-const REGISTRIES_STORAGE_KEY = "registries6";
+const REGISTRIES_STORAGE_KEY = "registries7";
+
+const NEW_REGISTRY_HELPER_TEXT = {
+    id: 'Technical Id, like openai-ada-high-temp-1',
+    name: 'Human readable name',
+    family_id: 'Family Id, ex "openai" or "llama"',
+    organization: 'Human readable organization. Could be a github user.',
+    homepage: 'URL for more information, like a HuggingFace page.',
+    connector: 'Connector pantry needs to use to run this. When in doubt, probably GGML.',
+    create_thread: 'Yes if the model runs locally.',
+    description: 'Human readable description of the model.',
+    requirements:'Human readable—how much ram? GPU? etc.',
+    license: 'MIT/Apache 2.0/etc.',
+    parameters: 'Parameters set by the config, for ex hardcoded temperature.',
+    user_parameters: 'Parameters settable by the user when they call this model.',
+    capabilities: 'Rated capabilities-Find the standard capabilities on the pantry github, and apply ratings to them. Capabilities left empty will be stored as "unrated". 0 represents "not capable".',
+    tags: 'Comma separated tags, ex: "openai, gpt, conversational, remote"',
+    url: 'Download URL for the model. Should be a ggml file atm.',
+    config: 'Config to run the model. See pantry/github readme for details on what\'s required.',
+  }
+
+interface ProgressState {
+  [key: string]: {progress: string, error: boolean};
+}
 
 function DownloadableLLMs() {
   const [downloadableLLMs, setDownloadableLLMs] = useState<[LLMRegistryEntry, LLMRegistry][]>([]);
+  const [availableLLMs, setAvailableLLMs] = useState<LLMAvailable[]>([]);
   const [registries, setRegistries] = useState<any>([]);
 
   async function getRegistries(): Promise<LLMRegistryRegistry> {
@@ -116,13 +145,26 @@ function DownloadableLLMs() {
 
   useEffect(() => {
     const downloadableLLMs: [LLMRegistryEntry, LLMRegistry][] = [];
-    getRegistries().then((regs) => {
+
+    getRegistries().then(async (regs) => {
+      const result: {data: LLMAvailable[]} = await invoke<{data: LLMAvailable[]}>('available_llms');
+      const llm_avail = result.data.map(toLLMAvailable);
+      setAvailableLLMs(llm_avail);
+
       console.log("registries:", regs);
+      setRegistries(regs);
       for (let reg_key of Object.keys(regs)) {
         console.log("reg key {}, regs  models {}", reg_key, regs[reg_key])
-        downloadableLLMs.push(...(regs[reg_key].models.map((reg_entry): [LLMRegistryEntry, LLMRegistry] => [reg_entry, regs[reg_key]])));
-        setDownloadableLLMs(downloadableLLMs);
-      }
+              // Filter out already downloaded models based on id and backend_uuid
+        const filteredModels = regs[reg_key].models.filter((reg_entry) =>
+          !llm_avail.some(llm => llm.id === reg_entry.id && llm.uuid === reg_entry.backend_uuid)
+        );
+
+        downloadableLLMs.push(...(filteredModels.map((reg_entry): [LLMRegistryEntry, LLMRegistry] => [reg_entry, regs[reg_key]])));
+    }
+        //filter downloadable llm by whether downloadableLLM.id and .backend_uuid
+        // downloadableLLMs.push(...(regs[reg_key].models.map((reg_entry): [LLMRegistryEntry, LLMRegistry] => [reg_entry, regs[reg_key]])));
+      setDownloadableLLMs(downloadableLLMs);
     });
 
 //     const fetchDownloadableLLMs = async () => {
@@ -151,7 +193,7 @@ function DownloadableLLMs() {
     create_thread: false,
     description: '',
     requirements:'',
-    licence: '',
+    license: '',
     parameters: {}, // initialize with default LLMRegistry array
     user_parameters: [],
     capabilities: {}, // initialize with default capabilities object
@@ -162,24 +204,6 @@ function DownloadableLLMs() {
   const [newRegistryEntry, setNewRegistryEntry] = useState<LLMRegistryEntry>(produceEmptyRegistryEntry());
 
 
-  const newRegistryHelperText = {
-    id: 'Technical Id, like openai-ada-high-temp-1',
-    name: 'Human readable name',
-    family_id: 'Family Id, ex "openai" or "llama"',
-    organization: 'Human readable organization. Could be a github user.',
-    homepage: 'URL for more information, like a HuggingFace page.',
-    connector: 'Connector pantry needs to use to run this. When in doubt, probably GGML.',
-    create_thread: 'Yes if the model runs locally.',
-    description: 'Human readable description of the model.',
-    requirements:'Human readable—how much ram? GPU? etc.',
-    licence: 'MIT/Apache 2.0/etc.',
-    parameters: 'Parameters set by the config, for ex hardcoded temperature.',
-    user_parameters: 'Parameters settable by the user when they call this model.',
-    capabilities: 'Rated capabilities-Find the standard capabilities on the pantry github, and apply ratings to them. Capabilities left empty will be stored as "unrated". 0 represents "not capable".',
-    tags: 'Comma separated tags, ex: "openai, gpt, conversational, remote"',
-    url: 'Download URL for the model. Should be a ggml file atm.',
-    config: 'Config to run the model. See pantry/github readme for details on what\'s required.',
-  }
   const validateNewRegistryEntry = (): boolean => {
     return Object.keys(newRegistryErrors).length == 0
   }
@@ -290,6 +314,34 @@ function DownloadableLLMs() {
 
 
 
+  const beginDownload = (llm_id: string, reg_url: string, index:number, uuid: string) => {
+    store.get(REGISTRIES_STORAGE_KEY)
+      .then(async (out) => {
+        console.log(out);
+        // We get the registries back
+        const registries: {[id: string]: LLMRegistry} = out as {[id: string]: LLMRegistry}
+        const targetModel = registries[reg_url].models.find((value) => value.id == llm_id) as LLMRegistryEntry;
+        targetModel.backend_uuid = uuid;
+        targetModel.download_state = LLMDownloadState.Downloading;
+
+        setDownloadableLLMs(prevState => {
+          const newState = [...prevState];
+          newState[index] = [targetModel, newState[index][1]]; // Updating the specific item at index
+          return newState;
+        });
+
+        setRegistries((prevRegistries:{[id: string]:LLMRegistry}) => {
+          const newRegistries = {...prevRegistries};
+          console.error("newRegistries", newRegistries);
+          newRegistries[reg_url] = {...newRegistries[reg_url], models: newRegistries[reg_url].models.map((model: LLMRegistryEntry) =>
+            model.id === llm_id ? targetModel : model // Updating the specific model in the registry
+          )};
+          return newRegistries;
+        });
+      });
+  }
+
+
 
   return (
     <div>
@@ -297,8 +349,8 @@ function DownloadableLLMs() {
        <Button variant="contained" color="primary" onClick={() => setModalOpen(true)}>
         Add Registry Entry
       </Button>
-      {downloadableLLMs.map((pair) => (
-        <LLMDownloadableInfo key={pair[0].id} llm={pair[0]} registry={pair[1]} />
+      {downloadableLLMs.map((pair, index) => (
+        <LLMDownloadableInfo key={pair[0].id} llm={pair[0]} registry={pair[1]} beginDownload={(uuid) => {beginDownload(pair[0].id, pair[1].url, index, uuid)}}/>
       ))}
       <Modal open={isModalOpen} className="form-modal" onClose={() => setModalOpen(false)}>
         <div className="new-llm-registry-entry-form form-div">
@@ -332,7 +384,7 @@ checked={newRegistryEntry[key as keyof LLMRegistryEntry] as boolean}
               <TextField
                   className="input-field"
                   error={!!newRegistryErrors[key]}
-                  helperText={newRegistryErrors[key] ? newRegistryErrors[key] : newRegistryHelperText[key]}
+                  helperText={newRegistryErrors[key] ? newRegistryErrors[key] : NEW_REGISTRY_HELPER_TEXT[key as keyof typeof NEW_REGISTRY_HELPER_TEXT]}
                   fullWidth
                   name={key}
                   label={capitalizeFirstLetter(key)}
@@ -342,7 +394,7 @@ checked={newRegistryEntry[key as keyof LLMRegistryEntry] as boolean}
               )
             ))}
             {["capabilities"].map((key) =>
-              [<h6>{newRegistryHelperText[key]}</h6>,
+              [<h6>{NEW_REGISTRY_HELPER_TEXT[key as keyof typeof NEW_REGISTRY_HELPER_TEXT]}</h6>,
               (Object.keys(dynamicKeyValuePairs[key as NumericField])).map((subKey, index) => (
                 <Grid container item xs={12} key={index}>
                   <Grid item xs={6}>
@@ -373,7 +425,7 @@ checked={newRegistryEntry[key as keyof LLMRegistryEntry] as boolean}
           </Grid>
 
             {["config", "parameters" ].map((key) =>
-              [<h6>{newRegistryHelperText[key]}</h6>,
+              [<h6>{NEW_REGISTRY_HELPER_TEXT[key as keyof typeof NEW_REGISTRY_HELPER_TEXT]}</h6>,
               (Object.keys(dynamicKeyValuePairs[key as StringField]) ).map((subKey, index) => (
                 <Grid container item xs={12} key={index}>
                   <Grid item xs={6}>

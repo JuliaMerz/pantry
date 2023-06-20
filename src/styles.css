@@ -18,6 +18,8 @@ nav ul li {
 div.card {
   border: solid 1px black;
   padding: 15px;
+  display: flex;
+  flex-direction: column;
 }
 
 div.split {
@@ -27,13 +29,15 @@ div.split {
 }
 
 .right {
-  float: right;
+  justify-content: right;
+  min-width: 100px;
+  flex-grow: 1;
   margin: 8px;
 
 }
 
 .left {
-  width: 80vh;
+  flex-grow: 5;
 }
 
 div.card>div>h2:first-child {

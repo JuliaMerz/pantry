@@ -1,6 +1,6 @@
 // src/interfaces.ts
 
-interface LLM  {
+interface LLM {
   id: string;
   family_id: string;
   organization: string;
@@ -8,7 +8,7 @@ interface LLM  {
   name: string;
   description: string;
   requirements: string;
-  licence: string;
+  license: string;
   user_parameters: string[];
 
   capabilities: {[id: string]: number};
@@ -25,8 +25,10 @@ interface LLM  {
 
 interface LLMAvailable extends LLM {
   downloaded: string;
+  uuid: string;
   lastCalled: Date | null;
 }
+
 interface LLMRunning extends LLMAvailable {
   activated: string;
 }
@@ -72,7 +74,7 @@ interface LLMRegistryEntry {
   connector_type: LLMRegistryEntryConnector;
   create_thread: boolean;
   description: string;
-  licence: string;
+  license: string;
   parameters: {[id: string]: string};
   user_parameters: string[];
   capabilities: {[id: string]: number};
@@ -186,6 +188,10 @@ function toLLM(rustLLM: any): LLM {
     parameters: rustLLM.parameters,
     user_parameters: rustLLM.user_parameters,
     capabilities: rustLLM.capabilities,
+    url: rustLLM.url,
+    requirements: rustLLM.requirements,
+    license: rustLLM.license,
+    create_thread: rustLLM.create_thread,
 
     config: rustLLM.config,
     connector_type: rustLLM.connector_type,
@@ -196,6 +202,7 @@ function toLLMAvailable(rustLLMAvailable: any): LLMAvailable {
   return {
     ...toLLM(rustLLMAvailable.llm_info),
     downloaded: rustLLMAvailable.downloaded,
+    uuid: rustLLMAvailable.uuid,
     lastCalled: rustLLMAvailable.lastCalled ? new Date(rustLLMAvailable.last_called.time) : null,
   };
 }
