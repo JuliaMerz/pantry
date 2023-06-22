@@ -1,11 +1,14 @@
-use crate::connectors::LLMInternalWrapper;
+use crate::connectors::{LLMInternalWrapper, LLMEvent, LLMEventInternal};
+use crate::llm::{LLMSession, LLMHistoryItem};
+use uuid::Uuid;
+use crate::user::User;
+use tiny_tokio_actor::*;
 use std::path::PathBuf;
 use tokio::sync::mpsc;
 use serde_json::Value;
 use std::collections::HashMap;
 use llm::VocabularySource;
 use std::sync::{Arc, RwLock};
-use crate::connectors::LLMEvent;
 
 //src/connectors/llmrs.rs
 
@@ -34,7 +37,7 @@ pub struct LLMrsConnector {
 }
 
 impl LLMrsConnector {
-    pub fn new(config: HashMap<String, Value>) -> LLMrsConnector {
+    pub fn new(uuid: Uuid, data_path: PathBuf, config: HashMap<String, Value>) -> LLMrsConnector {
         LLMrsConnector {
             config: config,
             model: RwLock::new(None)
@@ -42,12 +45,17 @@ impl LLMrsConnector {
     }
 }
 
+#[async_trait]
 impl LLMInternalWrapper for LLMrsConnector {
-    fn call_llm(self: &Self, msg: String, params: HashMap<String, Value>) -> Result<mpsc::Receiver<LLMEvent>, String> {
+    async fn call_llm(self: &mut Self, msg: String, params: HashMap<String, Value>, user: User) -> Result<mpsc::Receiver<LLMEvent>, String> {
 
         todo!()
     }
-    fn create_session(self: &mut Self, params: HashMap<String, Value>) -> Result<String, String> {
+    async fn get_sessions(self: &Self, user: User) -> Result<Vec<LLMSession>, String> {
+        todo!()
+    }
+
+    async fn create_session(self: &mut Self, params: HashMap<String, Value>, user: User) -> Result<Uuid, String> {
 
         let mut sampler = llm::samplers::TopPTopK::default();
         if let Some(Value::Number(n)) = self.config.get("top_k") {
@@ -94,11 +102,11 @@ impl LLMInternalWrapper for LLMrsConnector {
 
         todo!()
     } //uuid
-    fn prompt_session(self: &mut Self, session_id: String, msg: String) -> Result<mpsc::Receiver<LLMEvent>, String> {
+    async fn prompt_session(self: &mut Self, session_id: Uuid, msg: String, user: User) -> Result<mpsc::Receiver<LLMEvent>, String> {
         todo!()
     }
 
-    fn load_llm(self: &mut Self, ) -> Result<(), String> {
+    async fn load_llm(self: &mut Self) -> Result<(), String> {
         let vocab_source: llm::VocabularySource = match (self.config.get("vocabulary_path"), self.config.get("vocabulary_repository")) {
             (Some(_), Some(_)) => {
                 panic!("Cannot specify both --vocabulary-path and --vocabulary-repository");
@@ -131,7 +139,7 @@ impl LLMInternalWrapper for LLMrsConnector {
         Ok(())
     }
 
-    fn unload_llm(self: &Self, ) -> Result<(), String> {
+    async fn unload_llm(self: &Self, ) -> Result<(), String> {
         todo!()
 
     }//called by shutdown

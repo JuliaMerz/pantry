@@ -30,6 +30,9 @@ uuid = { version = "1.3.4", features = ["serde"] }
 llm = { git = "https://github.com/rustformers/llm" , branch = "main" }
 reqwest = { version = "0.11.18", features = ["serde_json", "stream"] }
 futures-util = "0.3"
+rmp-serde = "1.1.1"
+base64 = "0.21.2"
+rand = "0.8.5"
 
 
 

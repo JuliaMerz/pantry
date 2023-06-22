@@ -7,20 +7,23 @@ interface LLM {
 
   name: string;
   description: string;
-  requirements: string;
   license: string;
-  user_parameters: string[];
+  homepage: string,
 
   capabilities: {[id: string]: number};
+  requirements: string;
+  tags: string[];
 
-  parameters: {[id: string]: string};
-  config: {[id: string]: string};
-  connector_type: string;
 
   url: string;
 
+  config: {[id: string]: string};
+  connector_type: string;
   //backend info we maybe don't need
   create_thread: boolean;
+
+  parameters: {[id: string]: string};
+  user_parameters: string[];
 };
 
 interface LLMAvailable extends LLM {
@@ -34,7 +37,7 @@ interface LLMRunning extends LLMAvailable {
 }
 
 interface LLMResponse {
-    response: string, //Actual text response
+    session_id: string,
     parameters: {[id: string]: string};
     llm: LLM, //LLM used
 }
@@ -67,21 +70,27 @@ interface LLMRegistryEntry {
   id: string;
   family_id: string;
   organization: string;
+
   name: string;
   homepage: string;
-  download_state: LLMDownloadState;
-  backend_uuid: string;
-  connector_type: LLMRegistryEntryConnector;
-  create_thread: boolean;
   description: string;
   license: string;
-  parameters: {[id: string]: string};
-  user_parameters: string[];
+
   capabilities: {[id: string]: number};
   tags: string[],
-  url: string;
-  config: {[id: string]: string};
   requirements: string;
+
+  url: string;
+  backend_uuid: string;
+
+  connector_type: LLMRegistryEntryConnector;
+  create_thread: boolean;
+  config: {[id: string]: string};
+
+  parameters: {[id: string]: string};
+  user_parameters: string[];
+
+  download_state: LLMDownloadState;
 }
 
 async function toLLMRegistryEntry(remoteData: any): Promise<LLMRegistryEntry> {
@@ -158,6 +167,49 @@ const keysToCamelUnsafe = function (o:any) {
 };
 
 
+type DownloadEventType =
+  | { type: "DownloadProgress"; progress: string }
+  | { type: "DownloadCompletion" }
+  | { type: "DownloadError"; message: string };
+
+
+type LLMHistoryItem = {
+  id: string;
+  timestamp: Date;
+  last_call_timestamp: Date;
+  complete: boolean;
+  parameters: {[key: string]: string};
+  input: string;
+  output: string;
+};
+
+type LLMSession = {
+  id: string //this is a uuid
+  started: Date;
+  name: string; //We don't get this from the server
+  llm_uuid: string;
+  parameters: {[key: string]: string};
+  items: LLMHistoryItem[];
+};
+type LLMEventType =
+  | { type: "PromptProgress"; previous: string; next: string }
+  | { type: "PromptCompletion"; previous: string }
+  | { type: "PromptError"; message: string }
+  | { type: "ChannelClose" }
+  | { type: "Other" };
+
+interface LLMEventPayload {
+  stream_id: string; // historyitem.id
+  timestamp: Date; //for ordering
+  call_timestamp: Date; // historyitem.timestamp
+  parameters: {[key: string]: string}; //historyitem.parameters
+  input: string,
+  llm_uuid: string,
+  session?: LLMSession
+  event: LLMEventType;
+}
+
+
 export type {
   LLM,
   LLMAvailable,
@@ -170,6 +222,10 @@ export type {
   LLMRegistry,
   LLMRegistryRegistry,
   LLMRegistryEntry,
+  LLMHistoryItem,
+  LLMEventType,
+  LLMEventPayload,
+  LLMSession,
 }
 export {
   LLMRequestType,
@@ -192,6 +248,8 @@ function toLLM(rustLLM: any): LLM {
     requirements: rustLLM.requirements,
     license: rustLLM.license,
     create_thread: rustLLM.create_thread,
+    homepage: rustLLM.homepage,
+    tags: rustLLM.tags,
 
     config: rustLLM.config,
     connector_type: rustLLM.connector_type,
@@ -215,10 +273,9 @@ function toLLMRunning(rustLLMRunning: any): LLMRunning {
 }
 
 function toLLMResponse(rustLLMResponse: any): LLMResponse {
-  console.log(rustLLMResponse.parameters);
   return {
     llm: toLLM(rustLLMResponse.llm_info),
-    response: rustLLMResponse.response,
+    session_id: rustLLMResponse.session_id,
     parameters: rustLLMResponse.parameters
   }
 

@@ -7,41 +7,51 @@ import { LinearProgress } from '@mui/material';
 import Button from '@mui/material/Button';
 import { LLMRegistry, LLMRegistryEntry, LLMDownloadState } from '../interfaces';
 import { Store } from "tauri-plugin-store-api";
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef} from 'react';
 
 interface LLMDownloadableInfoProps {
   llm: LLMRegistryEntry,
   registry: LLMRegistry,
   beginDownload: (uuid: string) => void;
+  completeDownload: () => void;
 }
 
 
-const LLMDownloadableInfo: React.FC<LLMDownloadableInfoProps> = ({ llm, registry, beginDownload }) => {
+const LLMDownloadableInfo: React.FC<LLMDownloadableInfoProps> = ({ llm, registry, beginDownload, completeDownload}) => {
   const store = new Store(".local.dat");
 
   const [downloadProgress, setDownloadProgress] = useState('');
+  const downloadRef = useRef(downloadProgress);
   const [downloadError, setDownloadError] = useState(false);
   const downloadClick = async () => {
     console.log("sending off the llm reg", llm);
 
+
+    setDownloadError(false);
+    setDownloadProgress('0');
 
     const result = await invoke('download_llm', {llmReg: llm});
     const backend_uuid = (result as any).data.uuid;
     beginDownload(backend_uuid);
 
   }
-  console.log("llm", llm);
 
+  useEffect(() => {
+    downloadRef.current = downloadProgress;
+  }, [downloadProgress]);
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
 
     const errorCheck = (time: string) => {
+      console.log("arm error");
       setTimeout(() => {
-        if (downloadProgress === time) {
+        console.log("error!", downloadRef.current, time);
+        if (downloadRef.current === time) {
+          console.log("huh")
           setDownloadError(true)
         }
-      });
+      }, 5000);
     }
     errorCheck(downloadProgress);
 
@@ -50,10 +60,25 @@ const LLMDownloadableInfo: React.FC<LLMDownloadableInfoProps> = ({ llm, registry
       const unlisten = await listen('downloads', (event) => {
         if (event.payload.stream_id !== llm.id+'-'+llm.backend_uuid)
           return
-        if (event.payload.event.type == "download_error") {
+        if (event.payload.event.type == "DownloadError") {
           setDownloadError(true)
           return
         }
+        console.log("setting download progress",  event.payload.event.type, event.payload.event.progress);
+        if (event.payload.event.type == "DownloadCompletion") {
+          setDownloadProgress('100');
+          setDownloadError(false);
+          completeDownload();
+          return
+        }
+
+        if (event.payload.event.type == "ChannelClose") {
+          unlisten()
+          return
+        }
+
+        console.log("Setting...");
+
         setDownloadProgress(event.payload.event.progress);
         setDownloadError(false);
 
@@ -70,12 +95,16 @@ const LLMDownloadableInfo: React.FC<LLMDownloadableInfoProps> = ({ llm, registry
 
     <div className="card available-llm">
       <LLMInfo llm={llm} rightButton={
-          llm.download_state === LLMDownloadState.Downloading ? (
-            downloadProgress ?
-              (downloadError ?
-                <div>Error: No update in 5 seconds. Please restart.</div> :
-                <LinearProgress variant="determinate" value={parseInt(downloadProgress)} />)
-              : <LinearProgress variant="indeterminate" />)
+        llm.download_state === LLMDownloadState.Downloading ?
+            (downloadError ?
+                    (<div>
+                      <div className="error download-error">Error: No update in 5 seconds. Please restart.</div>
+                      <Button variant="contained" onClick={downloadClick} >Retry</Button>
+                      </div>)
+               :
+              (downloadProgress ?
+                <LinearProgress variant="determinate" value={parseInt(downloadProgress)} />
+              : <LinearProgress variant="indeterminate" />))
               : <Button variant="contained" onClick={downloadClick} >Download</Button>
       } />
       <div><b>Requirements:</b> {llm.requirements}</div>

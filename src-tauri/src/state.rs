@@ -9,6 +9,7 @@ use crate::llm;
 use dashmap::{DashMap, DashSet};
 use tiny_tokio_actor::*;
 
+use uuid::Uuid;
 
 // Tauri state
 //
@@ -26,16 +27,16 @@ pub struct GlobalState {
     pub user_settings: RwLock<UserSettings>,
     pub manager_addr: ActorRef<connectors::SysEvent, llm_manager::LLMManagerActor>,
     // pub running_llms: DashSet<String>,
-    pub activated_llms: DashMap<String, llm::LLMActivated>,
-    pub available_llms: DashMap<String, Arc<llm::LLM>>,
+    pub activated_llms: DashMap<Uuid, llm::LLMActivated>,
+    pub available_llms: DashMap<Uuid, Arc<llm::LLM>>,
 }
 
 /*
  * Functions that modify our global state (activating/deactivating LLMs)
  * */
 pub fn create_global_state(addr: ActorRef<connectors::SysEvent, llm_manager::LLMManagerActor>,
-            activated_llms: DashMap<String, llm::LLMActivated>,
-            available_llms: DashMap<String, Arc<llm::LLM>>,)
+            activated_llms: DashMap<Uuid, llm::LLMActivated>,
+            available_llms: DashMap<Uuid, Arc<llm::LLM>>,)
             -> GlobalState {
     GlobalState {
         manager_addr: addr,

@@ -1,5 +1,6 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+use uuid::Uuid;
 use std::collections::HashMap;
 use std::thread;
 use std::time;
@@ -33,6 +34,7 @@ mod connectors;
 mod error;
 mod registry;
 mod emitter;
+mod user;
 
 // Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
 #[tauri::command]
@@ -92,7 +94,7 @@ async fn main() {
             let path = PathBuf::from(".settings.dat");
 
             // Load user settings, then return running_llms.
-            let running_llms_vec:Result<Vec<String>, _>  = with_store(app.handle(), stores, path, |store| {
+            let running_llms_vec:Result<Vec<Uuid>, _>  = with_store(app.handle(), stores, path, |store| {
                 // let user_settings_json:Option<Arc> =
                 match store.get("userSettings") {
                     Some(val) => {
@@ -132,27 +134,34 @@ async fn main() {
 
             // Load available LLMs
 
-            let path = app.path_resolver()
-                .app_local_data_dir();
-            match path {
-                Some(mut p) => {
-                    p.push("llm_available.dat");
-                    match llm::deserialize_llms(p) {
-                        Ok(llms) => {
-                            println!("Found llm_available.dat, loading");
-                            llms.into_iter()
-                                .map(|val| state.available_llms.insert(val.id.clone(), Arc::new(val))).for_each(drop);
-                        },
-                        Err(_) => {
-                            println!("Didn't find llm_available.dat, using factory config");
-                            connectors::factory::factory_llms().into_iter()
-                                .map(|val| state.available_llms.insert(val.id.clone(), Arc::new(val))).for_each(drop); }
-                    }
+            let mut path = app.path_resolver()
+                .app_local_data_dir().ok_or("no path no pantry")?;
+
+            path.push("llm_available.dat");
+            println!("path used: {:?}", path);
+            match llm::deserialize_llms(path.clone()) {
+                Ok(llms) => {
+                    println!("Found llm_available.dat, loading");
+                    llms.into_iter()
+                        .map(|val| state.available_llms.insert(val.uuid.clone(), Arc::new(val))).for_each(drop);
                 },
-                None => {
-                    //We can't find a path?
-                    println!("Didn't find app_local_data_dir, panicking.");
-                    panic!("Can't find data path")
+                Err(err) => {
+                    println!("Error finding llm, using factory. Err: {:?}", err);
+                    connectors::factory::factory_llms().into_iter()
+                        .map(|val| state.available_llms.insert(val.uuid.clone(), Arc::new(val))).for_each(drop);
+
+                    // mostly test
+                    let llm_iter = state.available_llms.iter();
+
+                    let llm_vec: Vec<llm::LLM> = llm_iter.map(|val| (**(val.value())).clone()).collect();
+                    match llm::serialize_llms(path, &llm_vec) {
+                        Ok(res) => {
+                            println!("serialized successfully! {:?}", res);
+                        },
+                        Err(err) => {
+                            println!("failed serialize test: {:?}", err);
+                        }
+                    }
                 }
             }
 
@@ -165,6 +174,8 @@ async fn main() {
             //     },
             //     Err(_) => {state.user_settings = None}
             // }
+            let new_path = app.path_resolver()
+                .app_local_data_dir().ok_or("no path no pantry")?;
 
             // If running LLMs exist, we need to boot them up.
             let app_handle = app.handle();
@@ -175,7 +186,7 @@ async fn main() {
                     for val in running_llms_vec.unwrap().into_iter() {
                         let manager_addr_copy = manager_addr_clone.clone();
                         if let Some(new_llm) = state_pointer.available_llms.get(&val) {
-                            let result = llm::LLMActivated::activate_llm(new_llm.value().clone(), manager_addr_copy).await;
+                            let result = llm::LLMActivated::activate_llm(new_llm.value().clone(), manager_addr_copy, new_path.clone()).await;
                             // new_llm.load();
                             match result {
                                 Ok(running) => {

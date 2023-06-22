@@ -61,20 +61,25 @@ pub struct LLMRegistryEntry {
     pub id: String,
     pub family_id: String,
     pub organization: String,
+
     pub name: String,
     pub license: String,
-    pub homepage: String,
-    pub backend_uuid: String,
-    pub create_thread: bool,
     pub description: String,
-    pub connector_type: LLMRegistryEntryConnector,
-    pub parameters: HashMap<String, Value>,
-    pub user_parameters: Vec<String>,
+    pub homepage: String,
+
     pub capabilities: HashMap<String, isize>,
     pub tags: Vec<String>,
-    pub url: String,
-    pub config: HashMap<String, Value>,
     pub requirements: String,
+
+    pub backend_uuid: String,
+    pub url: String,
+
+    pub config: HashMap<String, Value>,
+    pub create_thread: bool,
+    pub connector_type: LLMRegistryEntryConnector,
+
+    pub parameters: HashMap<String, Value>,
+    pub user_parameters: Vec<String>,
 }
 
 
@@ -93,7 +98,7 @@ pub async fn download_and_write_llm(
     let mut file = File::create(&path)?;
 
     // Create the request.
-    let response = client.get(llm_reg.url).send().await?;
+    let response = client.get(llm_reg.url.clone()).send().await?;
 
     // Get the total size if available.
     let total_size_opt = response.content_length();
@@ -112,7 +117,7 @@ pub async fn download_and_write_llm(
         file.write_all(&chunk)?;
         downloaded += chunk.len() as u64;
         update_counter += 1;
-        if update_counter % 100 != 1 {
+        if update_counter % 1000 != 1 {
             continue;
         }
 
@@ -138,7 +143,6 @@ pub async fn download_and_write_llm(
         }
     }
 
-    let path = app.path_resolver().app_local_data_dir();
 
     let state:tauri::State<'_, state::GlobalState> = app.state();
 
@@ -152,6 +156,8 @@ pub async fn download_and_write_llm(
             downloaded_reason: "some kind of user input".into(), //TODO: make this dynamic at some point
             downloaded_date: chrono::offset::Utc::now(),
             last_called: RwLock::new(None),  // clone inner value
+            url: llm_reg.url.clone(),
+            homepage: llm_reg.homepage.clone(),
 
             uuid: uuid,
 
@@ -169,8 +175,9 @@ pub async fn download_and_write_llm(
 
     };
 
-    state.available_llms.insert(new_llm.id.clone(), Arc::new(new_llm));
+    state.available_llms.insert(new_llm.uuid.clone(), Arc::new(new_llm));
 
+    let path = app.path_resolver().app_local_data_dir();
     match path {
         Some(pp) => {
             let mut p = pp.to_owned();
@@ -180,7 +187,28 @@ pub async fn download_and_write_llm(
 
             let llm_vec: Vec<llm::LLM> = llm_iter.map(|val| (**(val.value())).clone()).collect();
 
-            llm::serialize_llms(p, &llm_vec);
+            println!("stuff:\n {:?}", llm_vec);
+            let result = llm::serialize_llms(p, &llm_vec);
+            match result {
+                Ok(_) => {
+                    println!("Successful download, llms serialized");
+                    app.emit_all("downloads", emitter::EventPayload {
+                        stream_id: stream_id.clone(),
+                        event: emitter::EventType::DownloadCompletion{}
+                    })?;
+
+                }
+                Err(_) => {
+
+                    println!("Failed to save download");
+                    app.emit_all("downloads", emitter::EventPayload {
+                        stream_id: stream_id.clone(),
+                        event: emitter::EventType::DownloadError{message:"failed to save llm".into()}
+                    })?;
+                }
+
+            }
+
         }
         None => {
             app.emit_all("downloads", emitter::EventPayload {
@@ -190,10 +218,6 @@ pub async fn download_and_write_llm(
         }
     }
 
-    app.emit_all("downloads", emitter::EventPayload {
-        stream_id: stream_id.clone(),
-        event: emitter::EventType::DownloadCompletion{}
-    })?;
     app.emit_all("downloads", emitter::EventPayload {
         stream_id: stream_id.clone(),
         event: emitter::EventType::ChannelClose{}

@@ -12,11 +12,11 @@ quick_error! {
             display("LLM Not Running")
         }
         ActorFailure (err: ActorError) {
-            display("ActorError failure: {}", err)
+            display("ActorError failure: {:?}", err)
             from()
         }
         OtherFailure(err: String) {
-            display("Failed due to: {}", err)
+            display("Other Error: {:?}", err)
             from()
         }
     }

@@ -1,12 +1,11 @@
 use tauri::{AppHandle, Wry, Manager};
 use tokio::sync::mpsc;
+use crate::connectors::LLMEvent;
 
-#[derive(Clone, serde::Serialize)]
+#[derive(Clone, serde::Serialize, Debug)]
 #[serde(tag="type")]
 pub enum EventType {
-  PromptProgress{previous: String, next: String}, // Next words of an LLM.
-  PromptCompletion{previous: String}, // Finished the prompt
-  PromptError{message: String},
+  LLMResponse(LLMEvent),
   DownloadProgress{progress: String},
   DownloadCompletion,
   DownloadError{message: String},
@@ -14,7 +13,7 @@ pub enum EventType {
   Other,
 }
 
-#[derive(Clone, serde::Serialize)]
+#[derive(Clone, serde::Serialize, Debug)]
 pub struct EventPayload {
   pub stream_id: String,
   pub event: EventType,
@@ -30,9 +29,13 @@ pub async fn send_events<T: 'static>(
     app: AppHandle,
     convert: ConversionFunc<T>)
 {
+    println!("STARTING RECEIVER");
     while let Some(payload_inner) = rx.recv().await {
         match convert(stream_id.to_string(), payload_inner){
-            Ok(payload) => app.emit_all(&channel, &payload).unwrap(),
+            Ok(payload) => {
+                println!("Emitting event {:?} on {:?}", payload, channel);
+                app.emit_all(&channel, &payload).unwrap()
+            },
             Err(_) => ()
         }
 
@@ -40,9 +43,10 @@ pub async fn send_events<T: 'static>(
 
     // Channel has closed, emit completion event
     let payload = EventPayload {
-        stream_id: channel.to_string(),
+        stream_id: stream_id.to_string(),
         event: EventType::ChannelClose,
     };
+    println!("Emitting event {:?} on {:?}", payload, channel);
     app.emit_all(&channel, &payload).unwrap();
 }
 

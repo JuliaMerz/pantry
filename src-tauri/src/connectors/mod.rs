@@ -1,6 +1,8 @@
-use crate::registry::LLMRegistryEntryConnector;
+use crate::{registry::LLMRegistryEntryConnector, llm::LLMSession, user};
+use chrono::prelude::*;
 use serde_json::Value;
-use std::collections::HashMap;
+use uuid::Uuid;
+use std::{collections::HashMap, path::PathBuf};
 use std::fmt;
 use tiny_tokio_actor::*;
 use tokio::sync::mpsc;
@@ -43,12 +45,12 @@ impl fmt::Display for LLMConnectorType {
 }
 
 
-pub fn get_new_llm_connector(connector_type: LLMConnectorType, config: HashMap<String, Value>) -> Box<dyn LLMInternalWrapper> {
+pub fn get_new_llm_connector(connector_type: LLMConnectorType, uuid: Uuid, data_path: PathBuf, config: HashMap<String, Value>) -> Box<dyn LLMInternalWrapper> {
 
     match connector_type {
-        LLMConnectorType::GenericAPI => Box::new(generic::GenericAPIConnector::new(config)),
-        LLMConnectorType::OpenAI => Box::new(openai::OpenAIConnector::new(config)),
-        LLMConnectorType::LLMrs => Box::new(llmrs::LLMrsConnector::new(config))
+        LLMConnectorType::GenericAPI => Box::new(generic::GenericAPIConnector::new(uuid, data_path, config)),
+        LLMConnectorType::OpenAI => Box::new(openai::OpenAIConnector::new(uuid, data_path, config)),
+        LLMConnectorType::LLMrs => Box::new(llmrs::LLMrsConnector::new(uuid, data_path, config))
     }
 }
 
@@ -66,20 +68,35 @@ impl From<LLMRegistryEntryConnector> for LLMConnectorType {
 }
 
 /* Actually connect to the LLMs */
+#[async_trait]
 pub trait LLMInternalWrapper: Send + Sync {
-    fn call_llm(self: &Self, msg: String, params: HashMap<String, Value>) -> Result<mpsc::Receiver<LLMEvent>, String>;
+    async fn call_llm(self: &mut Self, msg: String, params: HashMap<String, Value>, user: user::User) -> Result<mpsc::Receiver<LLMEvent>, String>;
+    async fn get_sessions(self: &Self, user: user::User) -> Result<Vec<LLMSession>, String>;
     //mut because we're going to modify our internal session storage
-    fn create_session(self: &mut Self, params: HashMap<String, Value>) -> Result<String, String>; //uuid
+    async fn create_session(self: &mut Self, params: HashMap<String, Value>, user: user::User) -> Result<Uuid, String>; //uuid
     //mut because we're going to modify our internal session storage
-    fn prompt_session(self: &mut Self, session_id: String, msg: String) -> Result<mpsc::Receiver<LLMEvent>, String>;
-    fn load_llm(self: &mut Self, ) -> Result<(), String>;
-    fn unload_llm(self: &Self, ) -> Result<(), String>; //called by shutdown
+    async fn prompt_session(self: &mut Self, session_id: Uuid, msg: String, user: user::User) -> Result<mpsc::Receiver<LLMEvent>, String>;
+
+    async fn load_llm(self: &mut Self) -> Result<(), String>;
+    async fn unload_llm(self: &Self, ) -> Result<(), String>; //called by shutdown
 
 }
 
-#[derive(Clone, serde::Serialize)]
+#[derive(Clone, serde::Serialize, Debug)]
+pub struct LLMEvent {
+      stream_id: Uuid,
+      timestamp: DateTime<Utc>,
+      call_timestamp: DateTime<Utc>,
+      parameters: HashMap<String, Value>,
+      input: String,
+      llm_uuid: Uuid,
+      session: LLMSession,
+      event: LLMEventInternal
+}
+
+#[derive(Clone, serde::Serialize, Debug)]
 #[serde(tag="type")]
-pub enum LLMEvent {
+pub enum LLMEventInternal {
   PromptProgress{previous: String, next: String}, // Next words of an LLM.
   PromptCompletion{previous: String}, // Finished the prompt
   PromptError{message: String},

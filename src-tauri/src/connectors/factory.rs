@@ -21,6 +21,9 @@ pub fn factory_llms() -> Vec<llm::LLM> {
             downloaded_date: Utc::now(),
             last_called: RwLock::new(Option::Some(Utc::now())),
             requirements: "An OpenAI Api Key".into(),
+            url: "".into(),
+            homepage: "https://platform.openai.com/docs/introduction".into(),
+
 
             capabilities: HashMap::from([("TEXT_COMPLETION".into(), 2), ("CONVERSATION".into(), 2)]),
             history: Vec::new(),
@@ -48,6 +51,8 @@ pub fn factory_llms() -> Vec<llm::LLM> {
             downloaded_date: Utc::now(),
             last_called: RwLock::new(Option::Some(Utc::now())),
             requirements: "An OpenAI Api Key".into(),
+            url: "".into(),
+            homepage: "https://platform.openai.com/docs/introduction".into(),
 
             capabilities: HashMap::from([("TEXT_COMPLETION".into(), 10), ("CONVERSATION".into(), 10)]),
             tags: vec!["openai".into()],
