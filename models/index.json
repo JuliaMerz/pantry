@@ -4,14 +4,14 @@
   "models": [
     {
       "id": "open_llama_7b-q5_1-ggjt",
-      "family_id": "llama",
+      "familyId": "llama",
       "organization": "",
 
       "name": "Open LLaMA GGML 7b",
       "url": "https://huggingface.co/rustformers/open-llama-ggml/resolve/main/open_llama_7b-q5_1-ggjt.bin",
       "homepage": "https://huggingface.co/rustformers/open-llama-ggml/",
-      "connector_type": "llmrs",
-      "create_thread": true,
+      "connectorType": "llmrs",
+      "createThread": true,
       "description": "description of the thing",
       "requirements": "8GB Ram, spirit",
       "license": "Apache 2.0",
@@ -24,13 +24,13 @@
       },
 
       "config": {
-        "model_architecture":"llama"
+        "modelArchitecture":"llama"
       },
       "parameters": {
-        "top_k": 50
+        "topK": 50
       },
 
-      "user_parameters": ["top_k", "top_p", "repeat_penalty", "temperature"]
+      "userParameters": ["top_k", "top_p", "repeat_penalty", "temperature"]
     }
   ]
 }

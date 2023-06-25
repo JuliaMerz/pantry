@@ -32,16 +32,16 @@ const NEW_REG_HELPER_TEXT = {
 const NEW_REGISTRY_HELPER_TEXT = {
     id: 'Technical Id, like openai-ada-high-temp-1',
     name: 'Human readable name',
-    family_id: 'Family Id, ex "openai" or "llama"',
+    familyId: 'Family Id, ex "openai" or "llama"',
     organization: 'Human readable organization. Could be a github user.',
     homepage: 'URL for more information, like a HuggingFace page.',
     connector: 'Connector pantry needs to use to run this. When in doubt, probably GGML.',
-    create_thread: 'Yes if the model runs locally.',
+    createThread: 'Yes if the model runs locally.',
     description: 'Human readable description of the model.',
     requirements:'Human readable—how much ram? GPU? etc.',
     license: 'MIT/Apache 2.0/etc.',
     parameters: 'Parameters set by the config, for ex hardcoded temperature.',
-    user_parameters: 'Parameters settable by the user when they call this model.',
+    userParameters: 'Parameters settable by the user when they call this model.',
     capabilities: 'Rated capabilities-Find the standard capabilities on the pantry github, and apply ratings to them. Capabilities left empty will be stored as "unrated". 0 represents "not capable".',
     tags: 'Comma separated tags, ex: "openai, gpt, conversational, remote"',
     url: 'Download URL for the model. Should be a ggml file atm.',
@@ -154,25 +154,25 @@ function DownloadableLLMs() {
 
     getRegistries().then(async (regs) => {
       const result: {data: LLMAvailable[]} = await invoke<{data: LLMAvailable[]}>('available_llms');
-      const llm_avail = result.data.map(toLLMAvailable);
-      setAvailableLLMs(llm_avail);
+      const llmAvail = result.data.map(toLLMAvailable);
+      setAvailableLLMs(llmAvail);
 
-      for (let reg_key of Object.keys(regs)) {
-        console.log("reg key {}, regs  models {}", reg_key, regs[reg_key], llm_avail)
-              // Filter out already downloaded models based on id and backend_uuid
-        const filteredModels = regs[reg_key].models.filter((reg_entry) =>
-          !llm_avail.some(llm => llm.id === reg_entry.id && llm.uuid === reg_entry.backend_uuid)
+      for (let regKey of Object.keys(regs)) {
+        console.log("reg key {}, regs  models {}", regKey, regs[regKey], llmAvail)
+              // Filter out already downloaded models based on id and backendUuid
+        const filteredModels = regs[regKey].models.filter((regEntry) =>
+          !llmAvail.some(llm => llm.id === regEntry.id && llm.uuid === regEntry.backendUuid)
         );
-        const removedModels = regs[reg_key].models.filter((reg_entry) =>
-          llm_avail.some(llm => llm.id === reg_entry.id && llm.uuid === reg_entry.backend_uuid)
+        const removedModels = regs[regKey].models.filter((regEntry) =>
+          llmAvail.some(llm => llm.id === regEntry.id && llm.uuid === regEntry.backendUuid)
         );
 
         removedModels.map((value) => {
           // If we have them in llm_available then their download is actually complete already!
-          value.download_state = LLMDownloadState.Downloaded
+          value.downloadState = LLMDownloadState.Downloaded
         })
 
-        downloadableLLMs.push(...(filteredModels.map((reg_entry): [LLMRegistryEntry, LLMRegistry] => [reg_entry, regs[reg_key]])));
+        downloadableLLMs.push(...(filteredModels.map((reg_entry): [LLMRegistryEntry, LLMRegistry] => [reg_entry, regs[regKey]])));
       }
       console.log("registries:", regs);
       setRegistries(regs);
@@ -180,7 +180,7 @@ function DownloadableLLMs() {
       await store.set(REGISTRIES_STORAGE_KEY, regs);
       await store.save();
 
-      // downloadableLLMs.push(...(regs[reg_key].models.map((reg_entry): [LLMRegistryEntry, LLMRegistry] => [reg_entry, regs[reg_key]])));
+      // downloadableLLMs.push(...(regs[regKey].models.map((reg_entry): [LLMRegistryEntry, LLMRegistry] => [reg_entry, regs[regKey]])));
       setDownloadableLLMs(downloadableLLMs);
     });
 
@@ -210,18 +210,18 @@ function DownloadableLLMs() {
     const produceEmptyRegistryEntry = (): LLMRegistryEntry => { return {
     id: '',
     name: '',
-    family_id: '',
+    familyId: '',
     organization: '',
     homepage: '',
-    download_state: LLMDownloadState.NotDownloaded,
-    backend_uuid: '',
-    connector_type: LLMRegistryEntryConnector.Ggml, // provide a default value based on your LLMRegistryEntryConnector enum
-    create_thread: false,
+    downloadState: LLMDownloadState.NotDownloaded,
+    backendUuid: '',
+    connectorType: LLMRegistryEntryConnector.Ggml, // provide a default value based on your LLMRegistryEntryConnector enum
+    createThread: false,
     description: '',
     requirements:'',
     license: '',
     parameters: {}, // initialize with default LLMRegistry array
-    user_parameters: [],
+    userParameters: [],
     capabilities: {}, // initialize with default capabilities object
     tags: [],
     url: '',
@@ -364,15 +364,15 @@ function DownloadableLLMs() {
 
 
 
-  const beginDownload = (llm_id: string, reg_url: string, index:number, uuid: string) => {
+  const beginDownload = (llmId: string, regUrl: string, index:number, uuid: string) => {
     store.get(REGISTRIES_STORAGE_KEY)
       .then(async (out) => {
         console.log(out);
         // We get the registries back
         const registries: {[id: string]: LLMRegistry} = out as {[id: string]: LLMRegistry}
-        const targetModel = registries[reg_url].models.find((value) => value.id == llm_id) as LLMRegistryEntry;
-        targetModel.backend_uuid = uuid;
-        targetModel.download_state = LLMDownloadState.Downloading;
+        const targetModel = registries[regUrl].models.find((value) => value.id == llmId) as LLMRegistryEntry;
+        targetModel.backendUuid = uuid;
+        targetModel.downloadState = LLMDownloadState.Downloading;
 
         setDownloadableLLMs(prevState => {
           const newState = [...prevState];
@@ -383,8 +383,8 @@ function DownloadableLLMs() {
         setRegistries((prevRegistries:{[id: string]:LLMRegistry}) => {
           const newRegistries = {...prevRegistries};
           console.error("newRegistries", newRegistries);
-          newRegistries[reg_url] = {...newRegistries[reg_url], models: newRegistries[reg_url].models.map((model: LLMRegistryEntry) =>
-            model.id === llm_id ? targetModel : model // Updating the specific model in the registry
+          newRegistries[regUrl] = {...newRegistries[regUrl], models: newRegistries[regUrl].models.map((model: LLMRegistryEntry) =>
+            model.id === llmId ? targetModel : model // Updating the specific model in the registry
           )};
           store.set(REGISTRIES_STORAGE_KEY, newRegistries);
           store.save()
@@ -394,7 +394,7 @@ function DownloadableLLMs() {
 
   }
 
-  const completeDownload = (llm_id: string, reg_url: string) => {
+  const completeDownload = (llmId: string, regUrl: string) => {
     refreshData();
   };
 
@@ -436,7 +436,7 @@ function DownloadableLLMs() {
           <h2>Add a new Registry Entry</h2>
           <Grid item xs={12}>
             {Object.keys(newRegistryEntry).map((key) =>
-              key !== "config" && key !== "parameters" && key !== "capabilities" && key !== "backend_uuid" && key !== "download_state" && (typeof newRegistryEntry[key as keyof LLMRegistryEntry] === "boolean" ? (
+              key !== "config" && key !== "parameters" && key !== "capabilities" && key !== "backendUuid" && key !== "downloadState" && (typeof newRegistryEntry[key as keyof LLMRegistryEntry] === "boolean" ? (
 
         <FormControlLabel labelPlacement="start" control={<Checkbox
 checked={newRegistryEntry[key as keyof LLMRegistryEntry] as boolean}

@@ -7,16 +7,12 @@ use tauri::Manager;
 use uuid::{Uuid, uuid};
 use chrono::serde::ts_seconds_option;
 use crate::connectors;
-use crate::connectors::LLMEvent;
 use crate::connectors::llm_manager;
-use crate::error::PantryError;
 use crate::llm;
 use crate::emitter;
-use crate::llm::LLM;
 use crate::llm::LLMWrapper;
 use crate::registry;
 use crate::state;
-use std::{sync::{Arc, RwLock}, ops::Deref};
 use serde_json::json;
 use tauri::{AppHandle, Wry};
 use tauri_plugin_store::with_store;
@@ -75,6 +71,7 @@ pub struct LLMRunning {
     #[serde(with = "ts_seconds_option")]
     pub last_called: Option<DateTime<Utc>>,
     pub activated: String,
+    pub uuid: String,
     // #[serde(skip_serializing)]
     // pub llm: dyn LLMWrapper + Send + Sync
 
@@ -86,7 +83,7 @@ pub struct LLMAvailable {
     pub downloaded: String,
     #[serde(with = "ts_seconds_option")]
     pub last_called: Option<DateTime<Utc>>,
-    pub uuid: Uuid,
+    pub uuid: String,
 }
 
 
@@ -143,7 +140,8 @@ impl From<&llm::LLMActivated> for LLMRunning {
             download_reason: format!("Downloaded {} for {}", value.llm.downloaded_date.format("%b %e %T %Y"), value.llm.downloaded_reason),
             downloaded_date: value.llm.downloaded_date,
             last_called: value.llm.last_called.read().unwrap().clone(),
-            activated: format!("Activated {} for {}", value.activated_time.format("%b %e %T %Y"), value.activated_reason)
+            activated: format!("Activated {} for {}", value.activated_time.format("%b %e %T %Y"), value.activated_reason),
+            uuid: value.llm.as_ref().uuid.to_string(),
         }
     }
 
@@ -157,7 +155,7 @@ impl From<&llm::LLM> for LLMAvailable {
         };
         LLMAvailable {
             llm_info: value.into() ,
-            uuid: value.uuid,
+            uuid: value.uuid.to_string(),
             downloaded: value.downloaded_reason.clone(),
             last_called: datetime,
         }
@@ -226,7 +224,7 @@ pub async fn available_llms(state: tauri::State<'_, state::GlobalState>) -> Resu
 
 #[derive(serde::Serialize)]
 pub struct DownloadResponse {
-    pub uuid: Uuid,
+    pub uuid: String,
     pub stream: String
 }
 
@@ -244,7 +242,7 @@ pub fn download_llm(llm_reg: registry::LLMRegistryEntry, app: tauri::AppHandle, 
     // Here we need to download llm_reg.url
 
     //Honestly idk wtf this code is even doing. It's definitely not downloading an LLM.
-    Ok(CommandResponse { data: DownloadResponse {uuid: uuid, stream: format!("{}-{}", id, uuid)}})
+    Ok(CommandResponse { data: DownloadResponse {uuid: uuid.to_string(), stream: format!("{}-{}", id, uuid)}})
 }
 
 // This command refreshes the registry entries stored in state
@@ -335,8 +333,9 @@ pub async fn ping(state: tauri::State<'_, state::GlobalState>) -> Result<Vec<Str
 
 
 #[tauri::command]
-pub async fn load_llm(id: String, app: tauri::AppHandle, state: tauri::State<'_, state::GlobalState>) -> Result<(), String> {
-    let uuid = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
+pub async fn load_llm(uuid: String, app: tauri::AppHandle, state: tauri::State<'_, state::GlobalState>) -> Result<(), String> {
+    // let uuid = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
+    let uuid = Uuid::parse_str(&uuid).map_err(|e| e.to_string())?;
     println!("Attempting to load an LLM");
     if (state.activated_llms.contains_key(&uuid)) {
         return Err("llm already loaded".into());
@@ -350,7 +349,7 @@ pub async fn load_llm(id: String, app: tauri::AppHandle, state: tauri::State<'_,
         // new_llm.load();
         match result {
             Ok(running) => {
-                println!("Inserting {id} into running LLMs");
+                println!("Inserting {uuid} into running LLMs");
                 state.activated_llms.insert(uuid, running);
                 Ok(())
             },
@@ -386,19 +385,40 @@ pub async fn load_llm(id: String, app: tauri::AppHandle, state: tauri::State<'_,
 }
 
 
-#[derive(serde::Serialize)]
+/*
+ * For responses, we need to include the LLM info because in a real api
+ * the caller might not know which LLM gets triggered.
+ * We also include a complete set of parameters, since those also aren't necessarily
+ * known.
+ *
+ * For Session Create/Prompt we include a partial info.
+ */
+
+#[derive(Debug, serde::Serialize )]
 pub struct CallLLMResponse {
     pub session_id: String,
     pub parameters: HashMap<String, Value>,
     pub llm_info: LLMInfo,
 }
 
+// Define the response structure for the prompt_session command.
+#[derive(Debug, serde::Serialize )]
+pub struct PromptSessionResponse {
+    pub llm_info: LLMInfo,  // assuming you have defined LLMInfo elsewhere.
+}
+
+#[derive(Debug, serde::Serialize )]
+pub struct CreateSessionResponse {
+    pub parameters: HashMap<String, Value>,
+    pub llm_info: LLMInfo,
+    pub session_id: String,
+}
+
 
 #[tauri::command]
-pub async fn get_sessions(llm_uuid: String, user: String, app: AppHandle, state: tauri::State<'_, state::GlobalState>) -> Result<CommandResponse<Vec<llm::LLMSession>>, String> {
+pub async fn get_sessions(llm_uuid: String, app: AppHandle, state: tauri::State<'_, state::GlobalState>) -> Result<CommandResponse<Vec<llm::LLMSession>>, String> {
     let uuid = Uuid::parse_str(&llm_uuid).map_err(|e| e.to_string())?;
-    println!("Frontend called get_sessions with LLM UUID {} and user {}", llm_uuid, user);
-
+    println!("Frontend called get_sessions with LLM UUID {:?} and user {:?}", llm_uuid, user::get_local_user());
     if let Some(llm) = state.activated_llms.get(&uuid) {
         match llm.value().get_sessions(user::get_local_user()).await {
             Ok(sessions) => {
@@ -413,11 +433,65 @@ pub async fn get_sessions(llm_uuid: String, user: String, app: AppHandle, state:
     }
 }
 
+#[tauri::command]
+pub async fn create_session(llm_uuid: String, user_parameters: HashMap<String, Value>, app: AppHandle, state: tauri::State<'_, state::GlobalState>) -> Result<CommandResponse<CreateSessionResponse>, String> {
+    println!("Frontend called create_session for {} with parameters {:?} and user {:?}", llm_uuid, user_parameters, user::get_local_user());
+    let uuid = Uuid::parse_str(&llm_uuid).map_err(|e| e.to_string())?;
+    if let Some(llm) = state.activated_llms.get(&uuid) {
+        match llm.value().create_session(user_parameters, user::get_local_user()).await {
+            Ok(resp) => {
+                Ok(CommandResponse {
+                    data: CreateSessionResponse {
+                        parameters: resp.parameters,
+                        session_id: resp.session_id.to_string(),
+                        llm_info: llm.llm.as_ref().into()
+                    }
+
+                })
+            },
+            Err(err) => Err(err.to_string()),
+        }
+    } else {
+        Err(format!("LLM with UUID {} not found", uuid))
+    }
+}
 
 #[tauri::command]
-pub async fn call_llm(id: String, message: String, user_parameters: HashMap<String, Value>, app: AppHandle, state: tauri::State<'_, state::GlobalState>) -> Result<CommandResponse<CallLLMResponse>, String> {
-    let uuid = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
-    println!("frontend called {} with {} and params {:?}", id, message, user_parameters);
+pub async fn prompt_session(llm_uuid: String, session_id: Uuid, prompt: String, app: AppHandle, state: tauri::State<'_, state::GlobalState>) -> Result<CommandResponse<PromptSessionResponse>, String> {
+    println!("Frontend called prompt_session with session_id {:?}, prompt {:?}, and user {:?}", session_id, prompt, user::get_local_user());
+    let uuid = Uuid::parse_str(&llm_uuid).map_err(|e| e.to_string())?;
+    if let Some(llm) = state.activated_llms.get(&uuid) {
+        match llm.value().prompt_session(session_id, prompt, user::get_local_user()).await {
+            Ok(prompt_response) => {
+                tokio::spawn(async move {
+                    emitter::send_events("llm_prompt_response".into(), session_id.to_string(), prompt_response.stream, app, |stream_id, event| {
+                        let event = emitter::EventType::LLMResponse(event);
+
+                        Ok(emitter::EventPayload {
+                            stream_id: stream_id,
+                            event: event,
+                        })
+
+                    }).await
+                });
+
+                Ok(CommandResponse {
+                    data: PromptSessionResponse {
+                        llm_info: llm.llm.as_ref().into()
+                    }
+                })
+            },
+            Err(err) => Err(err.to_string()),
+        }
+    } else {
+        Err(format!("LLM with UUID {} not found", uuid))
+    }
+}
+
+#[tauri::command]
+pub async fn call_llm(uuid: String, prompt: String, user_parameters: HashMap<String, Value>, app: AppHandle, state: tauri::State<'_, state::GlobalState>) -> Result<CommandResponse<CallLLMResponse>, String> {
+    let uuid = Uuid::parse_str(&uuid).map_err(|e| e.to_string())?;
+    println!("frontend called {} with {} and params {:?}", uuid, prompt, user_parameters);
     if let Some(llm) = state.activated_llms.get(&uuid) {
         let uuid = Uuid::new_v4();
         match state.manager_addr.ask(llm_manager::PingMessage()).await {
@@ -427,37 +501,12 @@ pub async fn call_llm(id: String, message: String, user_parameters: HashMap<Stri
 
         println!("{:?}", llm.value().ping().await);
 
-        match llm.value().call_llm(&message, user_parameters, user::get_local_user()).await {
+        match llm.value().call_llm(&prompt, user_parameters, user::get_local_user()).await {
             Ok(llm_resp) => {
 
-                    println!("ATTEMPTING TO START THREAD");
                     tokio::spawn(async move {
-                        println!("STARTED THREAD");
-                        emitter::send_events("llm_response".into(), uuid.to_string(), llm_resp.stream.unwrap(), app, |stream_id, blah| {
+                        emitter::send_events("llm_response".into(), llm_resp.session_id.to_string(), llm_resp.stream, app, |stream_id, blah| {
                             let event = emitter::EventType::LLMResponse(blah);
-                            // let event: emitter::EventType  = match blah.event {
-                            //     connectors::LLMEventInternal::PromptProgress { previous, next } => {
-                            //         Ok(emitter::EventType::PromptProgress {
-                            //             previous: previous,
-                            //             next: next
-                            //         })
-                            //     },
-                            //     connectors::LLMEventInternal::PromptCompletion { previous } => {
-                            //         Ok(emitter::EventType::PromptCompletion {
-                            //             previous: previous,
-                            //         })
-                            //     },
-                            //     connectors::LLMEventInternal::PromptError { message } => {
-                            //         Ok(emitter::EventType::PromptError {
-                            //             message: message
-                            //         })
-                            //     }
-
-                            //     other => {
-                            //         Err("invalid event type")
-                            //     }
-
-                            // }?;
 
                             Ok(emitter::EventPayload {
                                 stream_id: stream_id,

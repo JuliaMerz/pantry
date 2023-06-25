@@ -49,7 +49,7 @@ const LLMInfo: React.FC<LLMInfoProps> = ({
       </div>
       <div className="flex-row">
         <div><b>License</b> {llm.license}</div>
-        <div><b>Model Family</b> {llm.family_id}</div>
+        <div><b>Model Family</b> {llm.familyId}</div>
         <div><b>Organization</b> {llm.organization}</div>
       </div>
       <div className="collapse-wrapper" >
@@ -62,12 +62,12 @@ const LLMInfo: React.FC<LLMInfoProps> = ({
                 <div>
                   <h5>User Parameters</h5>
                   // Make this a table!
-                {Object.keys(llm.user_parameters).length > 0 ? (
+                {Object.keys(llm.userParameters).length > 0 ? (
                   <TableContainer component={Paper}>
                   <Table size="small" className="llm-details-table" aria-label="llm details">
                     <TableHead><TableCell>Parameter</TableCell></TableHead>
                     <TableBody>
-                  {llm.user_parameters.map((paramName, index) => (<TableRow> <TableCell>{paramName}</TableCell>
+                  {llm.userParameters.map((paramName, index) => (<TableRow> <TableCell>{paramName}</TableCell>
                               </TableRow>
                              ))
                   }
@@ -95,7 +95,7 @@ const LLMInfo: React.FC<LLMInfoProps> = ({
                   ) : (null)}
                 </div>
 
-                <div><b>Connector Type: </b>{llm.connector_type}</div>
+                <div><b>Connector Type: </b>{llm.connectorType}</div>
 
                 <div>
                   <h5>Connector Config</h5>

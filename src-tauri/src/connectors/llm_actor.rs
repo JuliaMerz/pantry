@@ -78,7 +78,7 @@ impl Message for StatusMessage{
 pub struct CallLLMMessage(pub String, pub HashMap<String, Value>, pub User);
  // strin 1 is text, string 2 is parameters_json
 impl Message for CallLLMMessage {
-    type Response = Result<mpsc::Receiver<connectors::LLMEvent>, String>;
+    type Response = Result<(Uuid, mpsc::Receiver<connectors::LLMEvent>), String>;
 }
 
 #[derive(Clone, Debug)]
@@ -133,7 +133,7 @@ impl Handler<connectors::SysEvent, StatusMessage> for LLMActor {
 
 #[async_trait]
 impl Handler<connectors::SysEvent, CallLLMMessage> for LLMActor {
-    async fn handle(&mut self, msg: CallLLMMessage, ctx: &mut ActorContext<connectors::SysEvent>) -> Result<mpsc::Receiver<connectors::LLMEvent>, String> {
+    async fn handle(&mut self, msg: CallLLMMessage, ctx: &mut ActorContext<connectors::SysEvent>) -> Result<(Uuid, mpsc::Receiver<connectors::LLMEvent>), String> {
         self.llm_internal.call_llm(msg.0, msg.1, msg.2).await
     }
 

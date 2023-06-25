@@ -40,21 +40,21 @@ pub struct HistoryItem {
     pub timestamp: DateTime<Utc>
 }
 
-// #[serde(tag="type")]
-#[derive(Clone)]
-pub enum LLMResponseType {
-    Str {string: String},
-    Stream { }
-}
-
 // #[derive(serde::Serialize)]
-pub struct LLMResponse {
-    pub response: LLMResponseType, // Event poll for info.
+pub struct CallLLMResponse {
+    pub session_id: Uuid,
     pub parameters: HashMap<String, Value>, //Final parameters used.
-    // We can't put a stream into an enum because of clone, so this is our workaround.
-    pub stream: Option<mpsc::Receiver<connectors::LLMEvent>>,
+    pub stream: mpsc::Receiver<connectors::LLMEvent>,
 }
 
+pub struct CreateSessionResponse {
+    pub session_id: Uuid,
+    pub parameters: HashMap<String, Value>,
+}
+
+pub struct PromptSessionResponse {
+    pub stream: mpsc::Receiver<connectors::LLMEvent>
+}
 //Potentially unecessary wrapper class, written to give us space.
 #[async_trait]
 pub trait LLMWrapper {
@@ -63,7 +63,9 @@ pub trait LLMWrapper {
     async fn ping(&self) -> Result<String, String>;
     async fn reload(&self) -> Result<(), PantryError>;
     async fn get_sessions(&self, user: user::User) -> Result<Vec<LLMSession>, PantryError>;
-    async fn call_llm(&self, message: &str, parameters: HashMap<String, Value>, user: user::User) -> Result<LLMResponse, PantryError>;
+    async fn create_session(&self, params: HashMap<String, Value>, user: user::User) -> Result<CreateSessionResponse, PantryError>;
+    async fn prompt_session(&self, session_id: Uuid, prompt: String, user: user::User) -> Result<PromptSessionResponse, PantryError>;
+    async fn call_llm(&self, message: &str, parameters: HashMap<String, Value>, user: user::User) -> Result<CallLLMResponse, PantryError>;
     fn into_llm_running(&self) -> frontend::LLMRunning;
 }
 
@@ -136,6 +138,7 @@ pub struct LLMHistoryItem {
 pub struct LLMSession {
     pub id: Uuid, //this is a uuid
     pub started: DateTime<Utc>,
+    pub last_called: DateTime<Utc>,
     pub user_id: Uuid,
     pub llm_uuid: Uuid,
     pub parameters: HashMap<String, Value>,
@@ -257,9 +260,42 @@ impl LLMWrapper for LLMActivated {
         }
     }
 
+    async fn create_session(&self, params: HashMap<String, Value>, user: user::User) -> Result<CreateSessionResponse, PantryError> {
+        println!("Called create_session with LLM UUID {} and user {:?}", self.llm.uuid, user);
+        // Reconcile Parameters
+        let mut armed_params = self.llm.parameters.clone();
+        for param in self.llm.user_parameters.iter() {
+            if let Some(val) = params.get(param) {
+                armed_params.insert(param.clone(), json!(val.clone()));
+            }
+        }
+        match self.actor.ask(llm_actor::CreateSessionMessage(armed_params.clone(), user.into())).await {
+            Ok(result) => match result {
+                Ok(session_id) => Ok( CreateSessionResponse {
+                    session_id: session_id,
+                    parameters: armed_params,
+                }),
+                Err(err) => Err(PantryError::OtherFailure(err)),
+            },
+            Err(err) => Err(PantryError::ActorFailure(err)),
+        }
+    }
+
+    async fn prompt_session(&self, session_id: Uuid, prompt: String, user: user::User) -> Result<PromptSessionResponse, PantryError> {
+        println!("Called prompt_session with LLM UUID {} and user {:?}", self.llm.uuid, user);
+        match self.actor.ask(llm_actor::PromptSessionMessage(session_id, prompt, user.into())).await {
+            Ok(result) => match result {
+                Ok(receiver) => Ok(PromptSessionResponse { stream: receiver }),
+                Err(err) => Err(PantryError::OtherFailure(err)),
+            },
+            Err(err) => Err(PantryError::ActorFailure(err)),
+        }
+    }
+
+
 
     // kinda ugly that we need mutability here for a potentially long call, for a short mut.
-    async fn call_llm(&self, message: &str, parameters: HashMap<String, Value>, user: user::User) -> Result<LLMResponse, PantryError> {
+    async fn call_llm(&self, message: &str, parameters: HashMap<String, Value>, user: user::User) -> Result<CallLLMResponse, PantryError> {
 
 
         // Reconcile Parameters
@@ -274,12 +310,14 @@ impl LLMWrapper for LLMActivated {
 
         match self.actor.ask(llm_actor::CallLLMMessage(message.into(), armed_params.clone(), user)).await {
             Ok(result) => match result {
-                Ok(stream) => Ok(
-                  LLMResponse {
-                        response: LLMResponseType::Stream {},
-                        stream: Some(stream),
+                Ok(pair) => {
+
+                    Ok(CallLLMResponse {
+                        session_id: pair.0,
+                        stream: pair.1,
                         parameters: armed_params,
-                    }),
+                    })
+                },
                 Err(err) => Err(PantryError::OtherFailure(err))
             },
             Err(err) => Err(PantryError::ActorFailure(err))

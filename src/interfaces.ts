@@ -2,7 +2,7 @@
 
 interface LLM {
   id: string;
-  family_id: string;
+  familyId: string;
   organization: string;
 
   name: string;
@@ -18,12 +18,12 @@ interface LLM {
   url: string;
 
   config: {[id: string]: string};
-  connector_type: string;
+  connectorType: string;
   //backend info we maybe don't need
-  create_thread: boolean;
+  createThread: boolean;
 
   parameters: {[id: string]: string};
-  user_parameters: string[];
+  userParameters: string[];
 };
 
 interface LLMAvailable extends LLM {
@@ -37,7 +37,7 @@ interface LLMRunning extends LLMAvailable {
 }
 
 interface LLMResponse {
-    session_id: string,
+    sessionId: string,
     parameters: {[id: string]: string};
     llm: LLM, //LLM used
 }
@@ -68,7 +68,7 @@ enum LLMDownloadState {
 
 interface LLMRegistryEntry {
   id: string;
-  family_id: string;
+  familyId: string;
   organization: string;
 
   name: string;
@@ -81,23 +81,23 @@ interface LLMRegistryEntry {
   requirements: string;
 
   url: string;
-  backend_uuid: string;
+  backendUuid: string;
 
-  connector_type: LLMRegistryEntryConnector;
-  create_thread: boolean;
+  connectorType: LLMRegistryEntryConnector;
+  createThread: boolean;
   config: {[id: string]: string};
 
   parameters: {[id: string]: string};
-  user_parameters: string[];
+  userParameters: string[];
 
-  download_state: LLMDownloadState;
+  downloadState: LLMDownloadState;
 }
 
 async function toLLMRegistryEntry(remoteData: any): Promise<LLMRegistryEntry> {
   return {
     ...remoteData,  // this will spread all the existing fields from the remoteData
-    backend_uuid: "",  // uuid populated later when download starts
-    download_state: LLMDownloadState.NotDownloaded  // initially, it's not downloaded
+    backendUuid: "",  // uuid populated later when download starts
+    downloadState: LLMDownloadState.NotDownloaded  // initially, it's not downloaded
   };
 }
 
@@ -175,8 +175,8 @@ type DownloadEventType =
 
 type LLMHistoryItem = {
   id: string;
-  timestamp: Date;
-  last_call_timestamp: Date;
+  callTimestamp: Date;
+  updateTimestamp: Date;
   complete: boolean;
   parameters: {[key: string]: string};
   input: string;
@@ -186,8 +186,9 @@ type LLMHistoryItem = {
 type LLMSession = {
   id: string //this is a uuid
   started: Date;
+  lastCalled: Date;
   name: string; //We don't get this from the server
-  llm_uuid: string;
+  llmUuid: string;
   parameters: {[key: string]: string};
   items: LLMHistoryItem[];
 };
@@ -199,12 +200,12 @@ type LLMEventType =
   | { type: "Other" };
 
 interface LLMEventPayload {
-  stream_id: string; // historyitem.id
+  streamId: string; // historyitem.id
   timestamp: Date; //for ordering
-  call_timestamp: Date; // historyitem.timestamp
+  callTimestamp: Date; // historyitem.timestamp
   parameters: {[key: string]: string}; //historyitem.parameters
   input: string,
-  llm_uuid: string,
+  llmUuid: string,
   session?: LLMSession
   event: LLMEventType;
 }
@@ -237,22 +238,22 @@ export {
 function toLLM(rustLLM: any): LLM {
   return {
     id: rustLLM.id,
-    family_id: rustLLM.family_id,
+    familyId: rustLLM.family_id,
     organization: rustLLM.organization,
     name: rustLLM.name,
     description: rustLLM.description,
     parameters: rustLLM.parameters,
-    user_parameters: rustLLM.user_parameters,
+    userParameters: rustLLM.user_parameters,
     capabilities: rustLLM.capabilities,
     url: rustLLM.url,
     requirements: rustLLM.requirements,
     license: rustLLM.license,
-    create_thread: rustLLM.create_thread,
+    createThread: rustLLM.create_thread,
     homepage: rustLLM.homepage,
     tags: rustLLM.tags,
 
     config: rustLLM.config,
-    connector_type: rustLLM.connector_type,
+    connectorType: rustLLM.connector_type,
   }
 }
 
@@ -275,7 +276,7 @@ function toLLMRunning(rustLLMRunning: any): LLMRunning {
 function toLLMResponse(rustLLMResponse: any): LLMResponse {
   return {
     llm: toLLM(rustLLMResponse.llm_info),
-    session_id: rustLLMResponse.session_id,
+    sessionId: rustLLMResponse.session_id,
     parameters: rustLLMResponse.parameters
   }
 
@@ -293,7 +294,6 @@ function toLLMRequest(rustLLMRequest: any): LLMRequest {
   if (type === LLMRequestType.Download) {
     return {
       ...(baseRequest as any),
-      source: rustLLMRequest.source.toLowerCase() as LLMSource,
       url: rustLLMRequest.url,
     };
   }

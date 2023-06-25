@@ -31,8 +31,8 @@ const LLMDownloadableInfo: React.FC<LLMDownloadableInfoProps> = ({ llm, registry
     setDownloadProgress('0');
 
     const result = await invoke('download_llm', {llmReg: llm});
-    const backend_uuid = (result as any).data.uuid;
-    beginDownload(backend_uuid);
+    const backendUuid = (result as any).data.uuid;
+    beginDownload(backendUuid);
 
   }
 
@@ -56,9 +56,9 @@ const LLMDownloadableInfo: React.FC<LLMDownloadableInfoProps> = ({ llm, registry
     errorCheck(downloadProgress);
 
     (async () => {
-      console.log("registering listener", llm.backend_uuid);
+      console.log("registering listener", llm.backendUuid);
       const unlisten = await listen('downloads', (event) => {
-        if (event.payload.stream_id !== llm.id+'-'+llm.backend_uuid)
+        if (event.payload.streamId !== llm.id+'-'+llm.backendUuid)
           return
         if (event.payload.event.type == "DownloadError") {
           setDownloadError(true)
@@ -90,12 +90,12 @@ const LLMDownloadableInfo: React.FC<LLMDownloadableInfoProps> = ({ llm, registry
     return () => {
       unlisten && unlisten();
     }
-  }, [llm.backend_uuid]);
+  }, [llm.backendUuid]);
   return (
 
     <div className="card available-llm">
       <LLMInfo llm={llm} rightButton={
-        llm.download_state === LLMDownloadState.Downloading ?
+        llm.downloadState === LLMDownloadState.Downloading ?
             (downloadError ?
                     (<div>
                       <div className="error download-error">Error: No update in 5 seconds. Please restart.</div>
@@ -108,7 +108,7 @@ const LLMDownloadableInfo: React.FC<LLMDownloadableInfoProps> = ({ llm, registry
               : <Button variant="contained" onClick={downloadClick} >Download</Button>
       } />
       <div><b>Requirements:</b> {llm.requirements}</div>
-      <div><b>User Parameters:</b> {llm.user_parameters.join(", ")}</div>
+      <div><b>User Parameters:</b> {llm.userParameters.join(", ")}</div>
       <div><b>Capabilities:</b> {JSON.stringify(llm.capabilities)}</div>
       <div><b>Parameters:</b> {JSON.stringify(llm.parameters)}</div>
       <div><b>Config:</b> {JSON.stringify(llm.config)}</div>

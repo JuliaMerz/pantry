@@ -19,10 +19,10 @@ const LLMAvailableInfo: React.FC<LLMAvailableInfoProps> = ({
     // call function to disable the LLM
     console.log("Enable the LLM");
     if (!checked) {
-      const result = await invoke('load_llm', {id: llm.id});
+      const result = await invoke('load_llm', {uuid: llm.uuid});
       console.log(result);
     } else {
-      const result = await invoke('unload_llm', {id: llm.id});
+      const result = await invoke('unload_llm', {uuid: llm.uuid});
       console.log(result);
     }
     setChecked(!checked);

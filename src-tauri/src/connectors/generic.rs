@@ -22,7 +22,7 @@ impl GenericAPIConnector {
 
 #[async_trait]
 impl LLMInternalWrapper for GenericAPIConnector {
-    async fn call_llm(self: &mut Self, msg: String, params: HashMap<String, Value>, user:User) -> Result<mpsc::Receiver<LLMEvent>, String> {
+    async fn call_llm(self: &mut Self, msg: String, params: HashMap<String, Value>, user:User) -> Result<(Uuid, mpsc::Receiver<LLMEvent>), String> {
         todo!()
     }
     async fn get_sessions(self: &Self, user: User) -> Result<Vec<LLMSession>, String> {

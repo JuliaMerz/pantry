@@ -70,7 +70,7 @@ impl From<LLMRegistryEntryConnector> for LLMConnectorType {
 /* Actually connect to the LLMs */
 #[async_trait]
 pub trait LLMInternalWrapper: Send + Sync {
-    async fn call_llm(self: &mut Self, msg: String, params: HashMap<String, Value>, user: user::User) -> Result<mpsc::Receiver<LLMEvent>, String>;
+    async fn call_llm(self: &mut Self, msg: String, params: HashMap<String, Value>, user: user::User) -> Result<(Uuid, mpsc::Receiver<LLMEvent>), String>;
     async fn get_sessions(self: &Self, user: user::User) -> Result<Vec<LLMSession>, String>;
     //mut because we're going to modify our internal session storage
     async fn create_session(self: &mut Self, params: HashMap<String, Value>, user: user::User) -> Result<Uuid, String>; //uuid

@@ -47,7 +47,7 @@ impl LLMrsConnector {
 
 #[async_trait]
 impl LLMInternalWrapper for LLMrsConnector {
-    async fn call_llm(self: &mut Self, msg: String, params: HashMap<String, Value>, user: User) -> Result<mpsc::Receiver<LLMEvent>, String> {
+    async fn call_llm(self: &mut Self, msg: String, params: HashMap<String, Value>, user: User) -> Result<(Uuid, mpsc::Receiver<LLMEvent>), String> {
 
         todo!()
     }

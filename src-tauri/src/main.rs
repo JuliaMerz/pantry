@@ -217,6 +217,9 @@ async fn main() {
             frontend::ping,
             frontend::load_llm,
             frontend::call_llm,
+            frontend::get_sessions,
+            frontend::create_session,
+            frontend::prompt_session,
             // frontend::unload_llm,
             frontend::download_llm
         ])
