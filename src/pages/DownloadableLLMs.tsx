@@ -1,15 +1,19 @@
 // src/pages/DownloadableLLMs.tsx
 
 import React, { useEffect, useState } from 'react';
-import Grid from '@mui/material/Grid';
-import Select from '@mui/material/Select';
-import MenuItem from '@mui/material/MenuItem';
-import Checkbox from '@mui/material/Checkbox';
-import FormControlLabel from '@mui/material/FormControlLabel';
-import Button from '@mui/material/Button';
-import Paper from '@mui/material/Paper';
-import Modal from '@mui/material/Modal';
-import TextField from '@mui/material/TextField';
+import {
+  Box,
+  Typography,
+  Grid,
+  Select,
+  MenuItem,
+  Checkbox,
+  FormControlLabel,
+  Button,
+  Paper,
+  Modal,
+  TextField,
+} from '@mui/material';
 import { LinearProgress } from '@mui/material';
 
 import { Store } from "tauri-plugin-store-api";
@@ -22,7 +26,7 @@ import LLMDownloadableInfo from '../components/LLMDownloadableInfo';
 
 const LLM_INFO_SOURCE = "https://raw.githubusercontent.com/JuliaMerz/pantry/master/models/index.json";
 
-const REGISTRIES_STORAGE_KEY = "registries11";
+const REGISTRIES_STORAGE_KEY = "registries12";
 
 const NEW_REG_HELPER_TEXT = {
   id: 'id/name of the registry',
@@ -382,7 +386,6 @@ function DownloadableLLMs() {
 
         setRegistries((prevRegistries:{[id: string]:LLMRegistry}) => {
           const newRegistries = {...prevRegistries};
-          console.error("newRegistries", newRegistries);
           newRegistries[regUrl] = {...newRegistries[regUrl], models: newRegistries[regUrl].models.map((model: LLMRegistryEntry) =>
             model.id === llmId ? targetModel : model // Updating the specific model in the registry
           )};
@@ -398,28 +401,37 @@ function DownloadableLLMs() {
     refreshData();
   };
 
+    return (
+    <Box>
+      <Typography variant="h3">Downloadable Large Language Models</Typography>
 
-  return (
-    <div>
-      <h1>Downloadable Large Language Models</h1>
-       <Button variant="contained" color="primary" onClick={() => setRegistryModalOpen(true)}>
-        Add Registry
-      </Button>
-       <Button variant="contained" color="primary" onClick={() => setRegistryEntryModalOpen(true)}>
-        Add Registry Entry
-      </Button>
-       <Button variant="contained" color="primary" onClick={refreshData}>
-        Refresh
-      </Button>
+      <Box sx={{ my: 2 }}>
+        <Button variant="contained" color="primary" onClick={() => setRegistryModalOpen(true)}>
+          Add Registry
+        </Button>
+        <Button variant="contained" color="primary" onClick={() => setRegistryEntryModalOpen(true)}>
+          Add Registry Entry
+        </Button>
+        <Button variant="contained" color="primary" onClick={refreshData}>
+          Refresh
+        </Button>
+      </Box>
+
       {downloadableLLMs.map((pair, index) => (
-        <LLMDownloadableInfo key={pair[0].id} llm={pair[0]} registry={pair[1]} beginDownload={(uuid) => {beginDownload(pair[0].id, pair[1].url, index, uuid)}} completeDownload={() => { completeDownload(pair[0].id, pair[1].url)}}/>
+        <LLMDownloadableInfo
+          key={pair[0].id}
+          llm={pair[0]}
+          registry={pair[1]}
+          beginDownload={(uuid) => {beginDownload(pair[0].id, pair[1].url, index, uuid)}}
+          completeDownload={() => { completeDownload(pair[0].id, pair[1].url)}}
+        />
       ))}
-      <Modal open={isRegistryModalOpen} className="form-modal" onClose={() => setRegistryModalOpen(false)}>
-        <div className="new-llm-registry-form form-div">
-          <h2>Add a new Registry</h2>
+
+      <Modal open={isRegistryModalOpen} onClose={() => setRegistryModalOpen(false)}>
+        <Box>
+          <Typography variant="h5">Add a new Registry</Typography>
             {Object.keys(newRegistry).map((key) =>
-            <TextField
-                className="input-field"
+              <TextField
                 error={!!newRegistryErrors[key]}
                 helperText={newRegistryErrors[key] ? newRegistryErrors[key] : NEW_REG_HELPER_TEXT[key as keyof typeof NEW_REG_HELPER_TEXT]}
                 fullWidth
@@ -428,40 +440,35 @@ function DownloadableLLMs() {
                 value={newRegistry[key as keyof typeof newRegistry]}
                 onChange={handleRegistryInputChange}
               />
-                                         )}
-        </div>
+            )}
+        </Box>
       </Modal>
-      <Modal open={isRegistryEntryModalOpen} className="form-modal" onClose={() => setRegistryEntryModalOpen(false)}>
-        <div className="new-llm-registry-entry-form form-div">
-          <h2>Add a new Registry Entry</h2>
+
+      <Modal open={isRegistryEntryModalOpen} onClose={() => setRegistryEntryModalOpen(false)}>
+        <Box>
+          <Typography variant="h5">Add a new Registry Entry</Typography>
           <Grid item xs={12}>
-            {Object.keys(newRegistryEntry).map((key) =>
+            {Object.keys(newRegistryEntry).map((key) => (
               key !== "config" && key !== "parameters" && key !== "capabilities" && key !== "backendUuid" && key !== "downloadState" && (typeof newRegistryEntry[key as keyof LLMRegistryEntry] === "boolean" ? (
-
-        <FormControlLabel labelPlacement="start" control={<Checkbox
-checked={newRegistryEntry[key as keyof LLMRegistryEntry] as boolean}
-          onChange={handleCheckboxInputChange}
-          name={key}
-          color="primary"
-        />} label={capitalizeFirstLetter(key)} />
-
-      ) : key === "connector" ? (
-
-        <FormControlLabel labelPlacement="start" control={
-        <Select
-          value={newRegistryEntry[key as keyof LLMRegistryEntry]}
-          onChange={handleRegistryEntryInputChange}
-          name={key}
-        >
-          <MenuItem value="ggml">GGML</MenuItem>
-          <MenuItem value="openai">OpenAI</MenuItem>
-        </Select>
-        } label={capitalizeFirstLetter(key)} />
-
-      ) : (
-
-              <TextField
-                  className="input-field"
+                <FormControlLabel labelPlacement="start" control={<Checkbox
+                  checked={newRegistryEntry[key as keyof LLMRegistryEntry] as boolean}
+                  onChange={handleCheckboxInputChange}
+                  name={key}
+                  color="primary"
+                />} label={capitalizeFirstLetter(key)} />
+              ) : key === "connector" ? (
+                <FormControlLabel labelPlacement="start" control={
+                <Select
+                  value={newRegistryEntry[key as keyof LLMRegistryEntry]}
+                  onChange={handleRegistryEntryInputChange}
+                  name={key}
+                >
+                  <MenuItem value="ggml">GGML</MenuItem>
+                  <MenuItem value="openai">OpenAI</MenuItem>
+                </Select>
+                } label={capitalizeFirstLetter(key)} />
+              ) : (
+                <TextField
                   error={!!newRegistryEntryErrors[key]}
                   helperText={newRegistryEntryErrors[key] ? newRegistryEntryErrors[key] : NEW_REGISTRY_HELPER_TEXT[key as keyof typeof NEW_REGISTRY_HELPER_TEXT]}
                   fullWidth
@@ -470,76 +477,76 @@ checked={newRegistryEntry[key as keyof LLMRegistryEntry] as boolean}
                   value={newRegistryEntry[key as keyof LLMRegistryEntry]}
                   onChange={handleRegistryEntryInputChange}
                 />
-              )
-            ))}
+              ))))}
             {["capabilities"].map((key) =>
-              [<h6>{NEW_REGISTRY_HELPER_TEXT[key as keyof typeof NEW_REGISTRY_HELPER_TEXT]}</h6>,
-              (Object.keys(dynamicKeyValuePairs[key as NumericField])).map((subKey, index) => (
-                <Grid container item xs={12} key={index}>
-                  <Grid item xs={6}>
-                    <TextField
-                      className="input-field"
-                      error={!!newRegistryEntryErrors[`${key}Key${index}`]}
-                      helperText={newRegistryEntryErrors[`${key}Value${index}`]}
-                      fullWidth
-                      value={dynamicKeyValuePairs[key as NumericField][index][0]}
-                      label={`${capitalizeFirstLetter(key)} Key ${index + 1}`}
-                      onChange={(e:any) => handleNumericKeyValueChange(e, index, key as NumericField, 0)}
-                    />
+              <Box>
+                <Typography variant="subtitle2">{NEW_REGISTRY_HELPER_TEXT[key as keyof typeof NEW_REGISTRY_HELPER_TEXT]}</Typography>
+                {Object.keys(dynamicKeyValuePairs[key as NumericField]).map((subKey, index) => (
+                  <Grid container item xs={12} key={index}>
+                    <Grid item xs={6}>
+                      <TextField
+                        error={!!newRegistryEntryErrors[`${key}Key${index}`]}
+                        helperText={newRegistryEntryErrors[`${key}Value${index}`]}
+                        fullWidth
+                        value={dynamicKeyValuePairs[key as NumericField][index][0]}
+                        label={`${capitalizeFirstLetter(key)} Key ${index + 1}`}
+                        onChange={(e:any) => handleNumericKeyValueChange(e, index, key as NumericField, 0)}
+                      />
+                    </Grid>
+                    <Grid item xs={6}>
+                      <TextField
+                        error={!!newRegistryEntryErrors[`${key}Value${index}`]}
+                        helperText={newRegistryEntryErrors[`${key}Value${index}`]}
+                        fullWidth
+                        value={dynamicKeyValuePairs[key as NumericField][index][1]}
+                        label={`${capitalizeFirstLetter(key)} Value ${index + 1}`}
+                        onChange={(e:any) => handleNumericKeyValueChange(e, index, key as NumericField, 1)}
+                      />
+                    </Grid>
                   </Grid>
-                  <Grid item xs={6}>
-                    <TextField
-                      className="input-field"
-                      error={!!newRegistryEntryErrors[`${key}Value${index}`]}
-                      helperText={newRegistryEntryErrors[`${key}Value${index}`]}
-                      fullWidth
-                      value={dynamicKeyValuePairs[key as NumericField][index][0]}
-                      label={`${capitalizeFirstLetter(key)} Value ${index + 1}`}
-                      onChange={(e:any) => handleNumericKeyValueChange(e, index, key as NumericField, 1)}
-                    />
+                ))}
+              </Box>
+            )}
+
+            {["config", "parameters"].map((key) =>
+              <Box>
+                <Typography variant="subtitle2">{NEW_REGISTRY_HELPER_TEXT[key as keyof typeof NEW_REGISTRY_HELPER_TEXT]}</Typography>
+                {Object.keys(dynamicKeyValuePairs[key as StringField]).map((subKey, index) => (
+                  <Grid container item xs={12} key={index}>
+                    <Grid item xs={6}>
+                      <TextField
+                        error={!!newRegistryEntryErrors[`${key}Key${index}`]}
+                        helperText={newRegistryEntryErrors[`${key}Key${index}`]}
+                        fullWidth
+                        value={dynamicKeyValuePairs[key as StringField][index][0]}
+                        label={`${capitalizeFirstLetter(key)} Key ${index + 1}`}
+                        onChange={(e:any) => handleStringKeyValueChange(e, index, key as StringField, 0)}
+                      />
+                    </Grid>
+                    <Grid item xs={6}>
+                      <TextField
+                        error={!!newRegistryEntryErrors[`${key}Value${index}`]}
+                        helperText={newRegistryEntryErrors[`${key}Value${index}`]}
+                        fullWidth
+                        value={dynamicKeyValuePairs[key as StringField][index][1]}
+                        label={`${capitalizeFirstLetter(key)} Value ${index + 1}`}
+                        onChange={(e:any) => handleStringKeyValueChange(e, index, key as StringField, 1)}
+                      />
+                    </Grid>
                   </Grid>
-                </Grid>
-              ))]
+                ))}
+              </Box>
             )}
           </Grid>
-
-            {["config", "parameters" ].map((key) =>
-              [<h6>{NEW_REGISTRY_HELPER_TEXT[key as keyof typeof NEW_REGISTRY_HELPER_TEXT]}</h6>,
-              (Object.keys(dynamicKeyValuePairs[key as StringField]) ).map((subKey, index) => (
-                <Grid container item xs={12} key={index}>
-                  <Grid item xs={6}>
-                    <TextField
-                      className="input-field"
-                      error={!!newRegistryEntryErrors[`${key}Key${index}`]}
-                      helperText={newRegistryEntryErrors[`${key}Key${index}`]}
-                      fullWidth
-                      value={dynamicKeyValuePairs[key as StringField][index][0]}
-                      label={`${capitalizeFirstLetter(key)} Key ${index + 1}`}
-                      onChange={(e:any) => handleStringKeyValueChange(e, index, key as StringField, 0)}
-                    />
-                  </Grid>
-                  <Grid item xs={6}>
-                    <TextField
-                      className="input-field"
-                      error={!!newRegistryEntryErrors[`${key}Value${index}`]}
-                      helperText={newRegistryEntryErrors[`${key}Value${index}`]}
-                      fullWidth
-                      value={dynamicKeyValuePairs[key as StringField][index][1]}
-                      label={`${capitalizeFirstLetter(key)} Value ${index + 1}`}
-                      onChange={(e:any) => handleStringKeyValueChange(e, index, key as StringField, 1)}
-                    />
-                  </Grid>
-                </Grid>
-              ))]
-            )}
 
           <Button variant="contained" color="primary" onClick={handleAddRegistryEntry}>
             Submit
           </Button>
-        </div>
+        </Box>
       </Modal>
-    </div>
+    </Box>
   );
+
 }
 
 export default DownloadableLLMs;

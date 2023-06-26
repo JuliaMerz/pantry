@@ -31,7 +31,10 @@ impl Actor<connectors::SysEvent> for LLMActor {
         ctx.system.publish(connectors::SysEvent(format!("Actor '{}' started.", ctx.path)));
         match self.llm_internal.load_llm().await {
             Ok(_) => Ok(()),
-            Err(err) => Err(ActorError::CreateError(err))
+            Err(err) => {
+                println!("Failure to load LLM: {:?}", err);
+                Err(ActorError::CreateError(err))
+            }
         }
     }
 

@@ -7,6 +7,11 @@ import { LLMAvailable, toLLMAvailable } from '../interfaces';
 import LLMAvailableInfo from '../components/LLMAvailableInfo';
 import Switch from '@mui/material/Switch';
 
+import {
+  Box,
+  Typography,
+} from '@mui/material';
+
 function AvailableLLMs() {
   const [availableLLMs, setAvailableLLMs] = useState<LLMAvailable[]>([]);
 
@@ -30,12 +35,12 @@ function AvailableLLMs() {
 
 
   return (
-    <div>
-      <h1>Available Large Language Models</h1>
+    <Box>
+      <Typography variant="h2">Available Large Language Models</Typography>
       {availableLLMs.map((llm) => (
         <LLMAvailableInfo llm={llm} key={llm.id}/>
         ))}
-    </div>
+    </Box>
   );
 }
 

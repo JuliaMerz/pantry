@@ -464,7 +464,7 @@ pub async fn prompt_session(llm_uuid: String, session_id: Uuid, prompt: String, 
         match llm.value().prompt_session(session_id, prompt, user::get_local_user()).await {
             Ok(prompt_response) => {
                 tokio::spawn(async move {
-                    emitter::send_events("llm_prompt_response".into(), session_id.to_string(), prompt_response.stream, app, |stream_id, event| {
+                    emitter::send_events("llm_response".into(), session_id.to_string(), prompt_response.stream, app, |stream_id, event| {
                         let event = emitter::EventType::LLMResponse(event);
 
                         Ok(emitter::EventPayload {
@@ -489,8 +489,8 @@ pub async fn prompt_session(llm_uuid: String, session_id: Uuid, prompt: String, 
 }
 
 #[tauri::command]
-pub async fn call_llm(uuid: String, prompt: String, user_parameters: HashMap<String, Value>, app: AppHandle, state: tauri::State<'_, state::GlobalState>) -> Result<CommandResponse<CallLLMResponse>, String> {
-    let uuid = Uuid::parse_str(&uuid).map_err(|e| e.to_string())?;
+pub async fn call_llm(llm_uuid: String, prompt: String, user_parameters: HashMap<String, Value>, app: AppHandle, state: tauri::State<'_, state::GlobalState>) -> Result<CommandResponse<CallLLMResponse>, String> {
+    let uuid = Uuid::parse_str(&llm_uuid).map_err(|e| e.to_string())?;
     println!("frontend called {} with {} and params {:?}", uuid, prompt, user_parameters);
     if let Some(llm) = state.activated_llms.get(&uuid) {
         let uuid = Uuid::new_v4();
@@ -518,7 +518,7 @@ pub async fn call_llm(uuid: String, prompt: String, user_parameters: HashMap<Str
 
                     Ok(CommandResponse {
                     data: CallLLMResponse {
-                        session_id: uuid.to_string(),
+                        session_id: llm_resp.session_id.to_string(),
                         parameters: llm_resp.parameters,
                         llm_info: llm.llm.as_ref().into()
                     }})

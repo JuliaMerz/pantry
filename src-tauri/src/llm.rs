@@ -103,6 +103,7 @@ pub struct LLM {
     pub connector_type: connectors::LLMConnectorType, // which connector to use
     // Configs used by the connector for setup.
     pub config: HashMap<String, Value>, //Configs used by the connector
+    pub local_path: Option<PathBuf>,
 
 
 
@@ -173,6 +174,7 @@ impl Clone for LLM {
             create_thread: self.create_thread.clone(),
             connector_type: self.connector_type.clone(), // assuming this type is also Clone
             config: self.config.clone(),
+            local_path: self.local_path.clone(),
             parameters: self.parameters.clone(),
             user_parameters: self.user_parameters.clone(),
         }
@@ -240,7 +242,7 @@ impl LLMWrapper for LLMActivated {
     async fn ping(&self) -> Result<String, String>{
         match self.actor.ask(llm_actor::IDMessage()).await {
             Ok(result) => Ok(format!("id result: {:?}", result)),
-            Err(err) => Err(format!("id error: {:?}", err))
+            Err(err) => Err(format!("ID error—This likely means the LLM is dead: {:?}", err))
         }
     }
 

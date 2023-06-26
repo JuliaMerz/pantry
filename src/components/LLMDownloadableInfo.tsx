@@ -3,9 +3,15 @@
 import { listen } from '@tauri-apps/api/event'
 import { invoke } from '@tauri-apps/api/tauri';
 import LLMInfo from './LLMInfo';
-import { LinearProgress } from '@mui/material';
-import Button from '@mui/material/Button';
-import { LLMRegistry, LLMRegistryEntry, LLMDownloadState } from '../interfaces';
+import {
+  LinearProgress ,
+  Button,
+  Card,
+  CardContent,
+  Typography,
+  Box,
+} from '@mui/material';
+import { LLMRegistry, LLMRegistryEntry, LLMDownloadState, fromLLMRegistryEntry } from '../interfaces';
 import { Store } from "tauri-plugin-store-api";
 import React, { useEffect, useState, useRef} from 'react';
 
@@ -30,7 +36,8 @@ const LLMDownloadableInfo: React.FC<LLMDownloadableInfoProps> = ({ llm, registry
     setDownloadError(false);
     setDownloadProgress('0');
 
-    const result = await invoke('download_llm', {llmReg: llm});
+    // TODO: Convert to backend format...
+    const result = await invoke('download_llm', {llmReg: fromLLMRegistryEntry(llm)});
     const backendUuid = (result as any).data.uuid;
     beginDownload(backendUuid);
 
@@ -48,7 +55,6 @@ const LLMDownloadableInfo: React.FC<LLMDownloadableInfoProps> = ({ llm, registry
       setTimeout(() => {
         console.log("error!", downloadRef.current, time);
         if (downloadRef.current === time) {
-          console.log("huh")
           setDownloadError(true)
         }
       }, 5000);
@@ -58,7 +64,8 @@ const LLMDownloadableInfo: React.FC<LLMDownloadableInfoProps> = ({ llm, registry
     (async () => {
       console.log("registering listener", llm.backendUuid);
       const unlisten = await listen('downloads', (event) => {
-        if (event.payload.streamId !== llm.id+'-'+llm.backendUuid)
+        console.log("Event received:", event);
+        if (event.payload.stream_id !== llm.id+'-'+llm.backendUuid)
           return
         if (event.payload.event.type == "DownloadError") {
           setDownloadError(true)
@@ -91,28 +98,29 @@ const LLMDownloadableInfo: React.FC<LLMDownloadableInfoProps> = ({ llm, registry
       unlisten && unlisten();
     }
   }, [llm.backendUuid]);
-  return (
-
-    <div className="card available-llm">
-      <LLMInfo llm={llm} rightButton={
-        llm.downloadState === LLMDownloadState.Downloading ?
-            (downloadError ?
-                    (<div>
-                      <div className="error download-error">Error: No update in 5 seconds. Please restart.</div>
-                      <Button variant="contained" onClick={downloadClick} >Retry</Button>
-                      </div>)
-               :
-              (downloadProgress ?
-                <LinearProgress variant="determinate" value={parseInt(downloadProgress)} />
-              : <LinearProgress variant="indeterminate" />))
-              : <Button variant="contained" onClick={downloadClick} >Download</Button>
-      } />
-      <div><b>Requirements:</b> {llm.requirements}</div>
-      <div><b>User Parameters:</b> {llm.userParameters.join(", ")}</div>
-      <div><b>Capabilities:</b> {JSON.stringify(llm.capabilities)}</div>
-      <div><b>Parameters:</b> {JSON.stringify(llm.parameters)}</div>
-      <div><b>Config:</b> {JSON.stringify(llm.config)}</div>
-    </div>
+    return (
+    <Card className="available-llm">
+      <CardContent>
+        <LLMInfo llm={llm} rightButton={
+          llm.downloadState === LLMDownloadState.Downloading ?
+              (downloadError ?
+                      (<Box>
+                        <Typography className="error download-error" color="error">Error: No update in 5 seconds. Please restart.</Typography>
+                        <Button variant="contained" onClick={downloadClick} >Retry</Button>
+                        </Box>)
+                 :
+                (downloadProgress ?
+                  <LinearProgress variant="determinate" value={parseInt(downloadProgress)} />
+                : <LinearProgress variant="indeterminate" />))
+                : <Button variant="contained" onClick={downloadClick} >Download</Button>
+        } />
+        <Typography variant="body1"><b>Requirements:</b> {llm.requirements}</Typography>
+        <Typography variant="body1"><b>User Parameters:</b> {llm.userParameters.join(", ")}</Typography>
+        <Typography variant="body1"><b>Capabilities:</b> {JSON.stringify(llm.capabilities)}</Typography>
+        <Typography variant="body1"><b>Parameters:</b> {JSON.stringify(llm.parameters)}</Typography>
+        <Typography variant="body1"><b>Config:</b> {JSON.stringify(llm.config)}</Typography>
+      </CardContent>
+    </Card>
   );
 };
 

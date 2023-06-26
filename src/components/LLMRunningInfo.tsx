@@ -1,19 +1,33 @@
 // src/components/LLMRunningInfo.tsx
-import Link from '@mui/material/Link';
 
 import { listen } from '@tauri-apps/api/event'
-import Switch from '@mui/material/Switch';
-import Table from '@mui/material/Table';
-import Paper from '@mui/material/Paper';
-import TableBody from '@mui/material/TableBody';
-import TableCell from '@mui/material/TableCell';
-import TableContainer from '@mui/material/TableContainer';
-import TableHead from '@mui/material/TableHead';
-import TableRow from '@mui/material/TableRow';
+
+import { Box,
+  Accordion,
+  Divider,
+  AccordionSummary,
+  AccordionDetails,
+  Typography,
+  Card,
+  CardContent,
+  TableContainer,
+  Table,
+  TableHead,
+  TableRow,
+  TableCell,
+  TableBody,
+  TextField,
+  TextareaAutosize,
+  Button,
+  Link,
+  Switch,
+  Paper,
+  Select,
+  MenuItem
+} from '@mui/material';
 
 import React, { useState, useEffect } from 'react';
-import { useCollapse } from 'react-collapsed';
-import { LLMRunning, LLMResponse, toLLMResponse, LLMHistoryItem, LLMEventType, LLMEventPayload, LLMSession } from '../interfaces';
+import { LLMRunning, LLMResponse, toLLMResponse, LLMHistoryItem, LLMEventType, LLMEventPayload, LLMSession, toLLMEventPayload, toLLMHistoryItem, toLLMSession } from '../interfaces';
 import LLMInfo from './LLMInfo';
 
 import { invoke } from '@tauri-apps/api/tauri';
@@ -50,33 +64,38 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
   const [checked, setChecked] = useState(true);
   const [userParametersState, setUserParametersState] = useState<{[id: string]: any}>(Object.fromEntries(llm.userParameters.map((val)=>[val, undefined])));
   const [message, setMessage] = useState("");
-  const { getCollapseProps, getToggleProps, isExpanded } = useCollapse();
   const [activeSessions, setActiveSessions] = useState<LLMSession[]>([]);
-  const [selectedSessionId, setSelectedSessionId] = useState<string>('');
+  const [selectedSessionId, setSelectedSessionId] = useState<string>('New Session');
   const [error, setError] = useState("");
   const store = new Store('.local.dat');
   const [sessionMessage, setSessionMessage] = useState("");
 
   useEffect(() => {
     fetchSessions();
-    listenForNewSessions();
+    return listenForNewSessions();
   }, []);
 
   const fetchSessions = async () => {
     console.log("llm.uuid", llm);
     const {data: sessions} = (await invoke('get_sessions', {llmUuid: llm.uuid}) as {data: LLMSession[]});
-    console.log("fetched sessions", sessions);
-    setActiveSessions(sessions);
+    console.log("fetche sessions", sessions.map(toLLMSession));
+    setActiveSessions(sessions.map(toLLMSession));
   };
 
-  const listenForNewSessions = async () => {
-    listen<LLMEventPayload>("llm_response", (event) => {
-      console.log("received event: ", event);
-      if (event.payload.llmUuid !== llm.uuid)
+  const listenForNewSessions = () => {
+    const unlisten_promise = listen<LLMEventPayload>("llm_response", (event) => {
+      console.log("heard event: ", event );
+
+      //In doing this we skip channel close messages, but we don't subscribe to a singular channel so it's chilld
+      if(!event.payload.event.type || event.payload.event.type !== "LLMResponse")
+        return
+      let payload: LLMEventPayload = toLLMEventPayload(event.payload.event);
+      console.log("processed event: ",  payload);
+      if (payload.llmUuid !== llm.uuid)
         return;
 
       setActiveSessions((currentSessions: LLMSession[]) => {
-        let sessionIndex = currentSessions.findIndex((session) => session.id === event.payload.session?.id);
+        let sessionIndex = currentSessions.findIndex((session) => session.id === payload.session?.id);
         let session: LLMSession;
         let isNewSession = false;
 
@@ -84,12 +103,12 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
         if (sessionIndex === -1) {
           isNewSession = true;
           session = {
-            id: event.payload.session?.id || '',
+            id: payload.session?.id || '',
             started: new Date(),
             name: '', // You mentioned that we don't get the name from the server.
-            lastCalled: event.payload.session?.lastCalled || new Date(),
-            llmUuid: event.payload.llmUuid,
-            parameters: event.payload.session?.parameters || {},
+            lastCalled: payload.session?.lastCalled || new Date(),
+            llmUuid: payload.llmUuid,
+            parameters: payload.session?.parameters || {},
             items: [],
           };
         } else {
@@ -97,36 +116,38 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
         }
 
         // Check if the history item already exists within the session.
-        let historyItemIndex = session.items.findIndex((item) => item.id === event.payload.streamId);
+        let historyItemIndex = session.items.findIndex((item) => item.id === payload.streamId);
         let historyItem: LLMHistoryItem;
 
         // If the history item does not exist, create a new one.
         if (historyItemIndex === -1) {
           historyItem = {
-            id: event.payload.streamId,
-            callTimestamp: event.payload.callTimestamp,
+            id: payload.streamId,
+            callTimestamp: payload.callTimestamp,
             complete: false,
             updateTimestamp: new Date(),
-            parameters: event.payload.parameters,
-            input: event.payload.input,
+            parameters: payload.parameters,
+            input: payload.input,
             output: '', // As per your model, the output field is empty initially
           };
           session.items.push(historyItem);
         } else {
+          // TODO: FIGURE OUT WHY INPUT/OUTPUT IS NOT UPDATING.
           // If the history item exists, update it.
           historyItem = session.items[historyItemIndex];
-          if(event.payload.callTimestamp > historyItem.updateTimestamp) {
-            if (event.payload.event.type === "PromptProgress") {
-              historyItem.output = event.payload.event.previous+event.payload.event.next; // Assuming the output is in the previous field of the event
+          if(payload.callTimestamp > historyItem.updateTimestamp) {
+            if (payload.event.type === "PromptProgress") {
+              historyItem.output = payload.event.previous+payload.event.next; // Assuming the output is in the previous field of the event
             }
-            if (event.payload.event.type === "PromptCompletion") {
-              historyItem.output = event.payload.event.previous; // Assuming the output is in the previous field of the event
+            if (payload.event.type === "PromptCompletion") {
+              historyItem.output = payload.event.previous; // Assuming the output is in the previous field of the event
               historyItem.complete = true;
             }
             session.items[historyItemIndex] = historyItem;
           }
         }
 
+        console.log("setting out to", session.items[0].output, payload);
         if (isNewSession) {
           return [...currentSessions, session];
         } else {
@@ -138,15 +159,14 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
         }
       });
     });
+    return ()=> {
+      // https://github.com/tauri-apps/tauri/discussions/5194#discussioncomment-3651818
+      unlisten_promise.then(f=>f());
+    };
   };
 
 
 
-  useEffect(() => {
-    if (isExpanded) {
-      // fetchHistory();
-    }
-  }, [isExpanded]);
 
   // const fetchHistory = async () => {
   //   store.get(`${llm.id}-history`).then((hist) => {
@@ -201,6 +221,7 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
     await invoke('call_llm', { llmUuid: llm.uuid, prompt:message, userParameters: userParametersState})
       .then((response) => {
         console.log("call_llm response: ", response);
+        setSelectedSessionId((response as any).data.session_id); //raw so underscore case
         //create a new session here
         return toLLMResponse((response as any).data);
       }).catch((err) => {
@@ -209,119 +230,164 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
       });
   };
 
+  const [expanded, setExpanded] = React.useState<string | false>(false);
+  const handleAccordion =
+  (panel: string) => (event: React.SyntheticEvent, newExpanded: boolean) => {
+    setExpanded(newExpanded ? panel : false);
+  };
+
 
   return (
-    <div className="card live-llm" >
-      <LLMInfo llm={llm} rightButton={<Switch defaultChecked checked={checked} onClick={handleToggle}/> }/>
-      <Link href={"/history/"+llm.id}>Last Called: {llm.lastCalled? llm.lastCalled.toString() : "Never"}</Link>
-    <div className="collapse-wrapper" >
-    <div className="collapser" {...getToggleProps()}>{isExpanded ? '▼ Collapse Interface' : '▶ Expand Interface'}</div>
-      <div {...getCollapseProps()}>
-        <div className="history" style={{overflow: 'auto'}}>
-          <div>
-          <label>Select a session:
-            <select value={selectedSessionId} onChange={(e) => setSelectedSessionId(e.target.value)}>
-              <option key="new" value=''>New Session</option>
-              {activeSessions.sort((a, b) => a.lastCalled.getTime()-b.lastCalled.getTime()).map((session) => (
-                <option key={session.id} value={session.id}>{session.name ? `${session.name}` : `${session.id}`}</option>
-              ))}
-            </select>
-          </label>
-        </div>
-
-    {selectedSessionId !== '' ? (activeSessions.map((session) => (
-      session.id === selectedSessionId && (
-        <div key={session.id} className="session-details">
-          <h5>{session.name ? `Session: ${session.name}` : `Session ID: ${session.id}`}</h5>
-          <h3>Started At: {session.started.toString()}</h3>
-          <h3>LLM UUID: {session.llmUuid}</h3>
-          <h3>Session Parameters:</h3>
-          {Object.keys(session.parameters).length > 0 ? (
-            <TableContainer component={Paper}><Table size="small" className="llm-details-table" aria-label="llm details">
-              <TableHead><TableCell>Parameter</TableCell><TableCell>Value</TableCell></TableHead>
-              <TableBody>
-            {Object.entries(session.parameters).map(([paramName, paramValue], index) => (
-              <TableRow key={index}>
-                <TableCell>{paramName}</TableCell>
-                <TableCell>{paramValue}</TableCell>
-              </TableRow>
-            ))}
-             </TableBody></Table></TableContainer>
-            ) : (null)
-          }
-          <h3>History Items:</h3>
-          {session.items.map((item, index) => (
-            <div className="llm-history-item" key={index}>
-              <h4>History Item ID: {item.id}</h4>
-              <h4>Timestamp: {item.callTimestamp.toString()}</h4>
-              <h3>Parameters:</h3>
-              {Object.keys(item.parameters).length > 0 ? (
-                <TableContainer component={Paper}><Table size="small" className="llm-details-table" aria-label="llm details">
-                  <TableHead><TableCell>Parameter</TableCell><TableCell>Value</TableCell></TableHead>
-                  <TableBody>
-                {Object.entries(item.parameters).map(([paramName, paramValue], index) => (
-                  <TableRow key={index}>
-                    <TableCell>{paramName}</TableCell>
-                    <TableCell>{paramValue}</TableCell>
-                  </TableRow>
+    <Card variant="outlined" sx={{ boxShadow: 1, p: 2, paddingTop: 0, marginBottom:2 }}>
+      <CardContent>
+      <LLMInfo llm={llm} rightButton={<Switch checked={checked} onClick={handleToggle} />} />
+      <Link href={"/history/" + llm.id}>Last Called: {llm.lastCalled ? llm.lastCalled.toString() : "Never"}</Link>
+      <Box>
+        <Accordion variant="innerCard" expanded={expanded === 'interface'} onChange={handleAccordion('interface')}>
+          <AccordionSummary variant="innerCard" aria-controls="panel1d-content" id="panel1d-header">
+            <Typography>Interface</Typography>
+          </AccordionSummary>
+          <AccordionDetails variant="innerCard">
+            <Box sx={{borderBottom: "2 solid black"}}>
+              <Select value={selectedSessionId} onChange={(e) => setSelectedSessionId(e.target.value)}>
+                <MenuItem key="new" value='New Session'>New Session</MenuItem>
+                {activeSessions.sort((a, b) => a.lastCalled.getTime() - b.lastCalled.getTime()).map((session) => (
+                <MenuItem key={session.id} value={session.id}>{session.name ? `${session.name}` : `${session.id}`}</MenuItem>
                 ))}
-                 </TableBody></Table></TableContainer>
-                ) : (null)
-              }
-              <div className="input">{item.input}</div>
-              <div className="output">{item.output}</div>
-            </div>
-          ))}
-            <div>
-            <form onSubmit={handleSessionSubmit}>
-            <div>
-              <label><b>Session Message</b>
-                <textarea placeholder="Enter your message for the session here..." value={sessionMessage} onChange={handleSessionMessageChange} /></label>
-            </div>
-            <button type="submit">Submit</button>
-          </form>
-        </div>
+              </Select>
+            </Box>
 
-        </div>
-      )))) :
-        (
-          <div>
-            <h5>Create a New Session</h5>
-            <form onSubmit={handleNewSessionSubmit}>
+            {selectedSessionId !== 'New Session' ? (activeSessions.map((session) => (
+              session.id === selectedSessionId && (
+                <Box key={session.id}>
+                  <Typography variant="h4">{session.name ? `Session: ${session.name}` : `Session ID: ${session.id}`}</Typography>
+                  <Typography variant="subtitle2">Started At: {session.started.toString()}</Typography>
+                  <Typography variant="h5">Session Parameters:</Typography>
+                  {Object.keys(session.parameters).length > 0 ? (
+                    <TableContainer component={Paper}>
+                      <Table size="small" aria-label="llm details">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell>Parameter</TableCell>
+                            <TableCell>Value</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {Object.entries(session.parameters).map(([paramName, paramValue], index) => (
+                            <TableRow key={index}>
+                              <TableCell>{paramName}</TableCell>
+                              <TableCell>{paramValue}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  ) : null
+                  }
+                  <Typography variant="h5">History:</Typography>
+                  {session.items.map((item, index) => (
+                    <Box key={index}>
+                      <Typography variant="subtitle2">History Item ID: {item.id}</Typography>
+                      <Typography variant="subtitle2">Timestamp: {item.callTimestamp.toString()}</Typography>
+                      {Object.keys(item.parameters).length > 0 ? (
+                        <TableContainer component={Paper}>
+                          <Table size="small" aria-label="llm details">
+                            <TableHead>
+                              <TableRow>
+                                <TableCell>Parameter</TableCell>
+                                <TableCell>Value</TableCell>
+                              </TableRow>
+                            </TableHead>
+                            <TableBody>
+                              {Object.entries(item.parameters).map(([paramName, paramValue], index) => (
+                                <TableRow key={index}>
+                                  <TableCell>{paramName}</TableCell>
+                                  <TableCell>{paramValue}</TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </TableContainer>
+                      ) : null
+                      }
+                        <Typography variant="subtitle2">Input</Typography>
+                        <Paper sx={{
 
-            <label><b>Parameters:</b></label>
-              {Object.entries(userParametersState).map(([paramName, paramValue], index) => (
-                <div key={index}>
-                  <label>{paramName}
-                  <input
-                    type="text"
-                    value={paramValue}
-                    onChange={(e) => handleParameterChange(paramName, e.target.value)}
-                  /></label>
-                </div>
-              ))}
-              <div>
-              <label><b>Message</b>
-                <textarea placeholder="Enter your LLM prompt here..." value={message} onChange={handleMessageChange} /></label>
-              </div>
-              <button type="submit">Submit</button>
-            </form>
+                          p: 1,
+                        }}>
+                      <Typography variant="body1">{item.input}</Typography>
+                      </Paper>
+                        <Typography variant="subtitle2">Output</Typography>
+                        <Paper sx={{
 
-          </div>
-    )}
+                          p: 1,
+                        }}>
+                      <Typography>{item.output}</Typography>
+                      </Paper>
+                      <Divider sx={{
 
-        </div>
+                        margin: 4
+                      }}/>
+                    </Box>
+                  ))}
+                  <Box>
+                    <form onSubmit={handleSessionSubmit}>
+                      <Box>
+                        <TextField
+                          label="Session Message"
+                          multiline
+                          value={sessionMessage}
+                          onChange={handleSessionMessageChange}
+                          variant="outlined"
+                        />
+                      </Box>
+                      <Button type="submit">Submit</Button>
+                    </form>
+                  </Box>
+                </Box>
+              )))) :
+              (
+                <Box>
+                  <Typography variant="h5">Create a New Session</Typography>
+                  <form onSubmit={handleNewSessionSubmit}>
+                    <Typography component="label">Parameters:</Typography>
+                    {Object.entries(userParametersState).map(([paramName, paramValue], index) => (
+                      <Box key={index}>
+                        <TextField
+                          label={paramName}
+                          onChange={(e) => handleParameterChange(paramName, e.target.value)}
+                          variant="outlined"
+                        />
+                      </Box>
+                    ))}
+                    <Box>
+                      <TextField
+                        label="Message"
+                        multiline
+                        minRows={4}
+                        minWidth={20}
+                        value={message}
+                        onChange={handleMessageChange}
+                        variant="outlined"
+                      />
+                    </Box>
+                    <Button type="submit">Submit</Button>
+                  </form>
+                </Box>
+              )}
+          </AccordionDetails>
+        </Accordion>
+      </Box>
+      <Box>
+        <Typography variant="body2"><small>Downloaded: {llm.downloaded}</small></Typography>
+        <Typography variant="body2"><small>Activated: {llm.activated}</small></Typography>
+      </Box>
+    </CardContent>
+  </Card>
 
-      </div>
-      </div>
-      <div>
-          <div><small>Downloaded: {llm.downloaded}</small></div>
-          <div><small>Activated: {llm.activated}</small></div>
-      </div>
-
-    </div>
   );
-};
+
+}
 
 export default LLMRunningInfo;
 

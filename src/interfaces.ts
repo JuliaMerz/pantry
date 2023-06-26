@@ -101,6 +101,31 @@ async function toLLMRegistryEntry(remoteData: any): Promise<LLMRegistryEntry> {
   };
 }
 
+function fromLLMRegistryEntry(frontendEntry: LLMRegistryEntry): any {
+  const backendEntry: any = {
+    id: frontendEntry.id,
+    family_id: frontendEntry.familyId,
+    organization: frontendEntry.organization,
+    name: frontendEntry.name,
+    homepage: frontendEntry.homepage,
+    description: frontendEntry.description,
+    license: frontendEntry.license,
+    capabilities: frontendEntry.capabilities,
+    tags: frontendEntry.tags,
+    requirements: frontendEntry.requirements,
+    url: frontendEntry.url,
+    backend_uuid: frontendEntry.backendUuid,
+    connector_type: frontendEntry.connectorType,
+    create_thread: frontendEntry.createThread,
+    config: frontendEntry.config,
+    parameters: frontendEntry.parameters,
+    user_parameters: frontendEntry.userParameters,
+  };
+
+  return backendEntry;
+}
+
+
 enum LLMRequestType {
   Load = "load",
   Download = "download",
@@ -192,6 +217,7 @@ type LLMSession = {
   parameters: {[key: string]: string};
   items: LLMHistoryItem[];
 };
+
 type LLMEventType =
   | { type: "PromptProgress"; previous: string; next: string }
   | { type: "PromptCompletion"; previous: string }
@@ -208,6 +234,57 @@ interface LLMEventPayload {
   llmUuid: string,
   session?: LLMSession
   event: LLMEventType;
+}
+
+function toLLMSession(rustSession: any): LLMSession {
+  return {
+    id: rustSession.id,
+    started: new Date(rustSession.started),
+    lastCalled: new Date(rustSession.last_called),
+    name: "",  // Since this isn't provided by the server, set an empty string or some default value.
+    llmUuid: rustSession.llm_uuid,
+    parameters: rustSession.parameters,
+    items: rustSession.items.map((item: any) => toLLMHistoryItem(item))
+  }
+}
+
+function toLLMHistoryItem(rustHistoryItem: any): LLMHistoryItem {
+  return {
+    id: rustHistoryItem.id,
+    callTimestamp: new Date(rustHistoryItem.call_timestamp),
+    updateTimestamp: new Date(rustHistoryItem.updated_timestamp),
+    complete: rustHistoryItem.complete,
+    parameters: rustHistoryItem.parameters,
+    input: rustHistoryItem.input,
+    output: rustHistoryItem.output,
+  }
+}
+
+function toLLMEventPayload(rustEvent: any): LLMEventPayload {
+  return {
+    streamId: rustEvent.stream_id,
+    timestamp: new Date(rustEvent.timestamp),
+    callTimestamp: new Date(rustEvent.call_timestamp),
+    parameters: rustEvent.parameters,
+    input: rustEvent.input,
+    llmUuid: rustEvent.llm_uuid,
+    session: rustEvent.session ? toLLMSession(rustEvent.session) : undefined,
+    event: toLLMEventType(rustEvent.event),
+  }
+}
+
+function toLLMEventType(rustEventInternal: any): LLMEventType {
+  switch(rustEventInternal.type) {
+    case "PromptProgress":
+      return { type: "PromptProgress", previous: rustEventInternal.previous, next: rustEventInternal.next };
+    case "PromptCompletion":
+      return { type: "PromptCompletion", previous: rustEventInternal.previous };
+    case "PromptError":
+      return { type: "PromptError", message: rustEventInternal.message };
+    case "Other":
+    default:
+      return { type: "Other" };
+  }
 }
 
 
@@ -301,5 +378,5 @@ function toLLMRequest(rustLLMRequest: any): LLMRequest {
   return baseRequest;
 }
 
-export { toLLM, toLLMAvailable, toLLMRunning, toLLMRequest, toLLMResponse, toLLMRegistryEntry };
+export { toLLM, toLLMAvailable, toLLMRunning, toLLMRequest, toLLMResponse, toLLMRegistryEntry, fromLLMRegistryEntry, toLLMSession, toLLMHistoryItem, toLLMEventPayload };
 

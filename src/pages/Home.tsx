@@ -1,4 +1,8 @@
 // src/pages/Home.tsx
+import {
+  Box,
+  Typography,
+} from '@mui/material';
 
 import React, { useState, useEffect } from 'react';
 import LLMRunningInfo from '../components/LLMRunningInfo';
@@ -24,12 +28,12 @@ function Home() {
   }, []);
 
   return (
-    <div>
-      <h1>Home</h1>
+    <Box>
+      <Typography variant="h2">Currently Running LLMs</Typography>
       {activeLlms.map((llm) => (
         <LLMRunningInfo key={llm.id} llm={llm} />
       ))}
-    </div>
+    </Box>
   );
 }
 

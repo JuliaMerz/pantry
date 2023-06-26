@@ -1,8 +1,13 @@
 import LLMInfo from '../components/LLMInfo';
 import React, { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/tauri';
-import Switch from '@mui/material/Switch';
-import Link from '@mui/material/Link';
+import {
+  Switch,
+  Link,
+  Typography,
+  Card,
+  CardContent,
+} from '@mui/material/';
 import {LLMAvailable} from '../interfaces';
 
 type LLMAvailableInfoProps = {
@@ -28,12 +33,14 @@ const LLMAvailableInfo: React.FC<LLMAvailableInfoProps> = ({
     setChecked(!checked);
   };
   return (
-    <div className="card available-llm">
-      <LLMInfo key={llm.id} llm={llm} rightButton={<Switch defaultChecked checked={checked} onClick={handleToggle}/> }/>
+    <Card variant="outlined" sx={{ boxShadow: 1, p: 2, paddingTop: 0, marginBottom:2 }}>
+      <CardContent>
+      <LLMInfo key={llm.id} llm={llm} rightButton={<Switch checked={checked} onClick={handleToggle}/> }/>
 
       <Link href={"/history/"+llm.id}>Last Called: {llm.lastCalled ? llm.lastCalled.toString() : "Never"}</Link>
-    <div><small>Downloaded: {llm.downloaded}</small></div>
-    </div>
+    <Typography variant="body2"><small>Downloaded: {llm.downloaded}</small></Typography>
+    </CardContent>
+    </Card>
   )
 }
 
