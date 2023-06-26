@@ -38,7 +38,8 @@ import { Store } from "tauri-plugin-store-api";
 
 
 type LLMRunningInfoProps = {
-  llm: LLMRunning
+  llm: LLMRunning;
+  refreshFn: ()=>void;
 };
 
 const coerceInput = (input: string): any => {
@@ -59,7 +60,8 @@ const coerceInput = (input: string): any => {
 }
 
 const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
-  llm
+  llm,
+  refreshFn,
 }) => {
   const [checked, setChecked] = useState(true);
   const [userParametersState, setUserParametersState] = useState<{[id: string]: any}>(Object.fromEntries(llm.userParameters.map((val)=>[val, undefined])));
@@ -180,7 +182,8 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
   const handleToggle = async () => {
     console.log("Disable the LLM");
     setChecked(!checked);
-    const result = await invoke('unload_llm', {id: llm.id});
+    const result = await invoke('unload_llm', {uuid: llm.uuid});
+    refreshFn();
   };
 
   const handleParameterChange = (name: string, value: string) => {

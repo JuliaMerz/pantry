@@ -36,7 +36,6 @@ const LLMDownloadableInfo: React.FC<LLMDownloadableInfoProps> = ({ llm, registry
     setDownloadError(false);
     setDownloadProgress('0');
 
-    // TODO: Convert to backend format...
     const result = await invoke('download_llm', {llmReg: fromLLMRegistryEntry(llm)});
     const backendUuid = (result as any).data.uuid;
     beginDownload(backendUuid);
@@ -110,8 +109,8 @@ const LLMDownloadableInfo: React.FC<LLMDownloadableInfoProps> = ({ llm, registry
                         </Box>)
                  :
                 (downloadProgress ?
-                  <LinearProgress variant="determinate" value={parseInt(downloadProgress)} />
-                : <LinearProgress variant="indeterminate" />))
+                  <LinearProgress sx={{width:'100%'}} variant="determinate" value={parseInt(downloadProgress)} />
+                : <LinearProgress sx={{width:'100%'}} variant="indeterminate" />))
                 : <Button variant="contained" onClick={downloadClick} >Download</Button>
         } />
         <Typography variant="body1"><b>Requirements:</b> {llm.requirements}</Typography>

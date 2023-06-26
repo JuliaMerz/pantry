@@ -533,6 +533,63 @@ pub async fn call_llm(llm_uuid: String, prompt: String, user_parameters: HashMap
 // pub async fn unload_llm(id: String, state: tauri::State<'_, GlobalState>) -> Result<(), String> {
 //     state.unload_llm(id).await
 // }
+//
+#[tauri::command]
+pub async fn unload_llm(uuid: String, app: tauri::AppHandle, state: tauri::State<'_, state::GlobalState>) -> Result<(), String> {
+    let uuid = Uuid::parse_str(&uuid).map_err(|e| e.to_string())?;
+    println!("Attempting to unload an LLM");
+
+    if let Some(running_llm) = state.activated_llms.remove(&uuid) {
+        let unload_message = llm_manager::UnloadLLMActorMessage { uuid };
+        let manager_addr = state.manager_addr.clone();
+
+        let result = manager_addr.ask(unload_message).await;
+
+        match result {
+            Ok(_) => Ok(()),
+            Err(_) => Err("Failed to send unload message to LLMManagerActor".into()),
+        }
+    } else {
+        Err("LLM not found or already unloaded".into())
+    }
+}
 
 
 
+#[tauri::command]
+pub async fn delete_llm(uuid: String, app: tauri::AppHandle, state: tauri::State<'_, state::GlobalState>) -> Result<(), String> {
+    let uuid = Uuid::parse_str(&uuid).map_err(|e| e.to_string())?;
+    println!("Attempting to delete an LLM");
+
+    if let Some(running_llm) = state.activated_llms.remove(&uuid) {
+        let unload_message = llm_manager::UnloadLLMActorMessage { uuid };
+        let manager_addr = state.manager_addr.clone();
+
+        manager_addr.ask(unload_message).await.map_err(|err|format!("Failed to send unload message to LLMManagerActor: {:?}", err))?.map_err(|err| format!("Failed to unload: {:?}", err))?;
+    }
+    if let Some(llm) = state.available_llms.remove(&uuid) {
+        if let Some(model_path) = llm.1.as_ref().model_path.clone() {
+            if let Err(err) = std::fs::remove_file(&model_path) {
+                return Err(format!("Failed to delete LLM file: {}", err));
+            }
+        }
+
+        let path = app.path_resolver().app_local_data_dir().ok_or("Failed to get data directory path")?;
+        let available_llms_path = path.join("llm_available.dat");
+
+        let llm_iter = state.available_llms.iter();
+        let llm_vec: Vec<llm::LLM> = llm_iter.map(|val| (**(val.value())).clone()).collect();
+
+        if let Err(err) = llm::serialize_llms(available_llms_path, &llm_vec) {
+            return Err(format!("Failed to serialize available LLMs: {}", err));
+        }
+
+        println!("Successfully deleted {} — {}", llm.1.id, llm.1.uuid);
+
+        Ok(())
+    } else {
+        return Err(format!("Unable to find LLM"))
+    }
+
+
+}

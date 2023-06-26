@@ -20,6 +20,7 @@ function AvailableLLMs() {
       try {
         console.log("sending");
         const result: {data: LLMAvailable[]} = await invoke<{data: LLMAvailable[]}>('available_llms');
+        console.log("resultsss", result);
         const res2: {[key:string]: String} = await invoke<{[key:string]: String}>('ping');
         console.log(res2);
         setAvailableLLMs(result.data.map(toLLMAvailable));

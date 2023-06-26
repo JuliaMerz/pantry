@@ -16,14 +16,14 @@ function Home() {
     const activeLLMs: {data: LLMRunning[]} = await invoke('active_llms');
     return activeLLMs;
   };
+  const fetchLLMs = async () => {
+    const ret: {data: LLMRunning[]} = await rustGetLLMs();
+    console.log(ret.data);
+    setActiveLlms(ret.data.map(toLLMRunning));
+  };
+
 
   useEffect(() => {
-    const fetchLLMs = async () => {
-      const ret: {data: LLMRunning[]} = await rustGetLLMs();
-      console.log(ret.data);
-      setActiveLlms(ret.data.map(toLLMRunning));
-    };
-
     fetchLLMs();
   }, []);
 
@@ -31,7 +31,7 @@ function Home() {
     <Box>
       <Typography variant="h2">Currently Running LLMs</Typography>
       {activeLlms.map((llm) => (
-        <LLMRunningInfo key={llm.id} llm={llm} />
+        <LLMRunningInfo key={llm.id} llm={llm} refreshFn={fetchLLMs}/>
       ))}
     </Box>
   );

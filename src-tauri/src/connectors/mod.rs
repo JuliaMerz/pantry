@@ -45,12 +45,12 @@ impl fmt::Display for LLMConnectorType {
 }
 
 
-pub fn get_new_llm_connector(connector_type: LLMConnectorType, uuid: Uuid, data_path: PathBuf, config: HashMap<String, Value>) -> Box<dyn LLMInternalWrapper> {
+pub fn get_new_llm_connector(connector_type: LLMConnectorType, uuid: Uuid, data_path: PathBuf, config: HashMap<String, Value>, model_path: Option<PathBuf>) -> Box<dyn LLMInternalWrapper> {
 
     match connector_type {
         LLMConnectorType::GenericAPI => Box::new(generic::GenericAPIConnector::new(uuid, data_path, config)),
         LLMConnectorType::OpenAI => Box::new(openai::OpenAIConnector::new(uuid, data_path, config)),
-        LLMConnectorType::LLMrs => Box::new(llmrs::LLMrsConnector::new(uuid, data_path, config))
+        LLMConnectorType::LLMrs => Box::new(llmrs::LLMrsConnector::new(uuid, data_path, config, model_path.unwrap()))
     }
 }
 

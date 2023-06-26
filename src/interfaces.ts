@@ -117,9 +117,11 @@ function fromLLMRegistryEntry(frontendEntry: LLMRegistryEntry): any {
     backend_uuid: frontendEntry.backendUuid,
     connector_type: frontendEntry.connectorType,
     create_thread: frontendEntry.createThread,
-    config: frontendEntry.config,
-    parameters: frontendEntry.parameters,
-    user_parameters: frontendEntry.userParameters,
+    // Some registry entries are written in snake case, because that's our javascript norm
+    // Ideally config etc are already written to be rust compatible but here we make sure.
+    config: keysToSnakeCaseUnsafe(frontendEntry.config),
+    parameters: keysToSnakeCaseUnsafe(frontendEntry.parameters),
+    user_parameters: keysToSnakeCaseUnsafe(frontendEntry.userParameters),
   };
 
   return backendEntry;
@@ -190,6 +192,37 @@ const keysToCamelUnsafe = function (o:any) {
 
   return o;
 };
+
+// Credits to ChatGPT based on the above function from Matthias
+const keysToSnakeCaseUnsafe = function (o:any) {
+  const toSnakeCase = function (s:any) {
+    return s.replace(/([A-Z])/g, ($1:any) => {
+      return '_' + $1.toLowerCase();
+    });
+  };
+  const isArray = function (a:any) {
+    return Array.isArray(a);
+  };
+  const isObject = function (o:any) {
+    return o === Object(o) && !isArray(o) && typeof o !== 'function';
+  };
+  if (isObject(o)) {
+    const n = {};
+
+    Object.keys(o).forEach((k) => {
+      (n as any)[toSnakeCase(k)] = keysToSnakeCaseUnsafe(o[k]);
+    });
+
+    return n;
+  } else if (isArray(o)) {
+    return o.map((i:any) => {
+      return keysToSnakeCaseUnsafe(i);
+    });
+  }
+
+  return o;
+};
+
 
 
 type DownloadEventType =

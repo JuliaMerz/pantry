@@ -220,8 +220,9 @@ async fn main() {
             frontend::get_sessions,
             frontend::create_session,
             frontend::prompt_session,
-            // frontend::unload_llm,
-            frontend::download_llm
+            frontend::unload_llm,
+            frontend::download_llm,
+            frontend::delete_llm,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

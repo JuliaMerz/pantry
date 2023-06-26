@@ -172,7 +172,7 @@ pub async fn download_and_write_llm(
             config: llm_reg.config.clone(),
             parameters: llm_reg.parameters.clone(),
             user_parameters: llm_reg.user_parameters.clone(),
-            local_path: Some(path.clone()),
+            model_path: Some(path.clone()),
 
     };
 

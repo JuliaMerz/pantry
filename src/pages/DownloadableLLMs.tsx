@@ -16,6 +16,8 @@ import {
 } from '@mui/material';
 import { LinearProgress } from '@mui/material';
 
+import { ModalBox } from '../theme';
+
 import { Store } from "tauri-plugin-store-api";
 import { fetch } from '@tauri-apps/api/http';
 import { listen } from '@tauri-apps/api/event'
@@ -428,7 +430,7 @@ function DownloadableLLMs() {
       ))}
 
       <Modal open={isRegistryModalOpen} onClose={() => setRegistryModalOpen(false)}>
-        <Box>
+        <ModalBox>
           <Typography variant="h5">Add a new Registry</Typography>
             {Object.keys(newRegistry).map((key) =>
               <TextField
@@ -441,11 +443,11 @@ function DownloadableLLMs() {
                 onChange={handleRegistryInputChange}
               />
             )}
-        </Box>
+        </ModalBox>
       </Modal>
 
       <Modal open={isRegistryEntryModalOpen} onClose={() => setRegistryEntryModalOpen(false)}>
-        <Box>
+        <ModalBox>
           <Typography variant="h5">Add a new Registry Entry</Typography>
           <Grid item xs={12}>
             {Object.keys(newRegistryEntry).map((key) => (
@@ -542,7 +544,7 @@ function DownloadableLLMs() {
           <Button variant="contained" color="primary" onClick={handleAddRegistryEntry}>
             Submit
           </Button>
-        </Box>
+        </ModalBox>
       </Modal>
     </Box>
   );

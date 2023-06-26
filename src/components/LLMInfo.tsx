@@ -52,14 +52,14 @@ const LLMInfo: React.FC<LLMInfoProps> = ({
   return (
     <Box>
       <Box sx={{display: 'flex', justifyContent: 'space-between', mb: 2}}>
-        <Box>
+        <Box sx={{flexGrow: 3}}>
           <Typography variant="h3">
               {llm.name} </Typography>
           <Typography variant="subtitle2">{llm.id}
           </Typography>
           <Typography variant="body1">{llm.description}</Typography>
         </Box>
-        <Box sx={{display: 'flex', justifyContent: 'flex-end', minWidth: '100px', flexGrow: 1}}>
+        <Box sx={{display: 'flex', justifyContent: 'flex-end', alignItems: "center", minWidth: '100px', flexGrow: 1}}>
           {rightButton}
         </Box>
       </Box>

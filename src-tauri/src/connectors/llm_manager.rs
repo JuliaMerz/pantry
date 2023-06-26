@@ -23,20 +23,6 @@ pub struct LLMManagerActor {
 impl Actor<SysEvent> for LLMManagerActor {}
 
 
-// Message to create a new LLMActor
-#[derive(Clone, Debug)]
-pub struct CreateLLMActorMessage {
-    pub id: String,
-    pub uuid: Uuid,
-    pub connector: connectors::LLMConnectorType,
-    pub config: HashMap<String, Value>,
-    pub data_path: PathBuf,
-}
-// id, connector type, config[]
-
-impl Message for CreateLLMActorMessage {
-    type Response = Result<ActorRef<SysEvent, LLMActor>, PantryError>;
-}
 // (llm_id, create_thread, config)
 
 #[derive(Clone, Debug)]
@@ -54,6 +40,21 @@ impl Message for PingMessage {
 //    type Response = Result<ActorRef<SysEvent, LLMActor>, PantryError>;
 //}
 
+// Message to create a new LLMActor
+#[derive(Clone, Debug)]
+pub struct CreateLLMActorMessage {
+    pub id: String,
+    pub uuid: Uuid,
+    pub connector: connectors::LLMConnectorType,
+    pub config: HashMap<String, Value>,
+    pub data_path: PathBuf,
+    pub model_path: Option<PathBuf>,
+}
+// id, connector type, config[]
+
+impl Message for CreateLLMActorMessage {
+    type Response = Result<ActorRef<SysEvent, LLMActor>, PantryError>;
+}
 
 #[async_trait]
 impl Handler<SysEvent, CreateLLMActorMessage> for LLMManagerActor {
@@ -61,7 +62,7 @@ impl Handler<SysEvent, CreateLLMActorMessage> for LLMManagerActor {
         println!("Running createllmactor handler");
 
         let conn: connectors::LLMConnectorType = msg.connector.clone();
-        let connection = connectors::get_new_llm_connector(conn.clone(), msg.uuid.clone(), msg.data_path.clone(), msg.config.clone());
+        let connection = connectors::get_new_llm_connector(conn.clone(), msg.uuid.clone(), msg.data_path.clone(), msg.config.clone(), msg.model_path.clone());
         let llm_act = LLMActor {
             loaded: false, //LLM actors need to have init called on them
             uuid: msg.uuid.clone(),
@@ -94,6 +95,30 @@ impl Handler<SysEvent, CreateLLMActorMessage> for LLMManagerActor {
 //     }
 // }
 
+
+// Message to unload an existing LLMActor
+#[derive(Clone, Debug)]
+pub struct UnloadLLMActorMessage {
+    pub uuid: Uuid,
+}
+
+impl Message for UnloadLLMActorMessage {
+    type Response = Result<(), PantryError>;
+}
+
+#[async_trait]
+impl Handler<SysEvent, UnloadLLMActorMessage> for LLMManagerActor {
+    async fn handle(&mut self, msg: UnloadLLMActorMessage, ctx: &mut ActorContext<SysEvent>) -> Result<(), PantryError> {
+        println!("Running unloadLLM handler");
+
+        if let Some(actor) = self.active_llm_actors.remove(&msg.uuid) {
+            ctx.stop_child(&msg.uuid.to_string()).await;
+            Ok(())
+        } else {
+            Err(PantryError::OtherFailure("LLM actor not found".into()))
+        }
+    }
+}
 
 
 

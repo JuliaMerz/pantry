@@ -31,15 +31,15 @@ use std::sync::{Arc, RwLock};
 //
 pub struct LLMrsConnector {
     pub config: HashMap<String, Value>,
-
+    model_path: PathBuf,
     model: RwLock<Option<Box<dyn llm::Model>>>
-
 }
 
 impl LLMrsConnector {
-    pub fn new(uuid: Uuid, data_path: PathBuf, config: HashMap<String, Value>) -> LLMrsConnector {
+    pub fn new(uuid: Uuid, data_path: PathBuf, config: HashMap<String, Value>, model_path: PathBuf) -> LLMrsConnector {
         LLMrsConnector {
             config: config,
+            model_path: model_path,
             model: RwLock::new(None)
         }
     }
@@ -122,14 +122,11 @@ impl LLMInternalWrapper for LLMrsConnector {
             .to_string()
             .parse()
             .map_err(|err| {format!("unsupported model architecture")})?;
-        let model_path = PathBuf::from(self.config.get("model_path")
-            .ok_or("missing model path")?
-            .to_string());
 
         let mut writer = self.model.write().unwrap();
         *writer = Some(llm::load_dynamic(
             model_architecture,
-            &model_path,
+            &self.model_path,
             vocab_source,
             Default::default(),
             llm::load_progress_callback_stdout,

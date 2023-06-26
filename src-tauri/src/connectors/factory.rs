@@ -38,7 +38,7 @@ pub fn factory_llms() -> Vec<llm::LLM> {
                 ("model".to_string(), json!("text-davinci-ada"))]),
             parameters: HashMap::from([("temperature".into(), json!(0.5)), ("color".into(), json!("red"))]),
             user_parameters: vec!["temperature".into()],
-            local_path: None,
+            model_path: None,
 
         },
         llm::LLM {
@@ -68,7 +68,7 @@ pub fn factory_llms() -> Vec<llm::LLM> {
                 ("model".to_string(), json!("text-davinci-ada"))]),
             parameters: HashMap::from([]),
             user_parameters: vec![],
-            local_path: None,
+            model_path: None,
         },
     ]
 }
