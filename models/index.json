@@ -26,11 +26,16 @@
       "config": {
         "modelArchitecture":"llama"
       },
-      "parameters": {
-        "topK": 50
-      },
 
-      "userParameters": ["top_k", "top_p", "repeat_penalty", "temperature"]
+
+      "parameters": {
+        "topK": 50,
+        "temperature": 0.3
+      },
+      "sessionParameterNames": {},
+
+      "userParameters": ["top_k", "top_p", "repeat_penalty", "temperature"],
+      "userSessionParameters": []
     }
   ]
 }
