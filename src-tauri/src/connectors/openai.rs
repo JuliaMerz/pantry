@@ -58,15 +58,15 @@ impl OpenAIConnector {
 
 #[async_trait]
 impl LLMInternalWrapper for OpenAIConnector {
-    async fn call_llm(&mut self, msg: String, params: HashMap<String, Value>, user: User) -> Result<(Uuid, mpsc::Receiver<LLMEvent>), String> {
+    async fn call_llm(&mut self, msg: String, session_params: HashMap<String, Value>, params: HashMap<String, Value>, user: User) -> Result<(Uuid, mpsc::Receiver<LLMEvent>), String> {
         println!("Triggered call llm for {:?} with \"{}\" and {:?}", user, msg, params);
 
         // Create a new session with the provided parameters
-        let session_id = self.create_session(params, user.clone()).await?;
+        let session_id = self.create_session(session_params, user.clone()).await?;
         println!("created a session");
 
         // Now that a new session is created, we need to prompt it immediately with the given message
-        match self.prompt_session(session_id, msg, user).await {
+        match self.prompt_session(session_id, msg, params, user).await {
             Ok(stream) => Ok((session_id, stream)),
             Err(e) => Err(e)
         }
@@ -92,7 +92,7 @@ impl LLMInternalWrapper for OpenAIConnector {
             last_called: Utc::now(),
             user_id: user.id, // replace with actual user_id
             llm_uuid: self.uuid.clone(), // replace with actual llm_uuid
-            parameters: params,
+            session_parameters: params,
             items: vec![],
         };
 
@@ -106,7 +106,7 @@ impl LLMInternalWrapper for OpenAIConnector {
         }
 
     } //uuid
-    async fn prompt_session(&mut self, session_id: Uuid, msg: String, user: User) -> Result<mpsc::Receiver<LLMEvent>, String> {
+    async fn prompt_session(&mut self, session_id: Uuid, msg: String, params: HashMap<String, Value>, user: User) -> Result<mpsc::Receiver<LLMEvent>, String> {
         // Here we find the session by ID in our sessions vector
         println!("attempting to find session");
         let resp = match self.sessions.iter_mut().find(|session| session.id == session_id) {
@@ -118,7 +118,7 @@ impl LLMInternalWrapper for OpenAIConnector {
                     updated_timestamp: Utc::now(),
                     call_timestamp: Utc::now(),
                     complete: false, // initially false, will be set to true once response is received
-                    parameters: session.parameters.clone(),
+                    parameters: params.clone(),
                     input: msg.clone(),
                     output: "".into(),
                 };

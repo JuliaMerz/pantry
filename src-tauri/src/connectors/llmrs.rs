@@ -1,14 +1,18 @@
 use crate::connectors::{LLMInternalWrapper, LLMEvent, LLMEventInternal};
+use chrono::{DateTime, Utc};
 use crate::llm::{LLMSession, LLMHistoryItem};
+use dashmap::DashMap;
 use uuid::Uuid;
+use std::{fs::File, error::Error};
 use crate::user::User;
 use tiny_tokio_actor::*;
 use std::path::PathBuf;
 use tokio::sync::mpsc;
 use serde_json::Value;
 use std::collections::HashMap;
-use llm::VocabularySource;
-use std::sync::{Arc, RwLock};
+use llm::{VocabularySource, InferenceSession};
+// use llm::llm_base::InferenceSnapshotRef;
+use std::sync::{Arc, RwLock, Mutex};
 
 //src/connectors/llmrs.rs
 
@@ -32,22 +36,89 @@ use std::sync::{Arc, RwLock};
 pub struct LLMrsConnector {
     pub config: HashMap<String, Value>,
     model_path: PathBuf,
-    model: RwLock<Option<Box<dyn llm::Model>>>
+    model: RwLock<Option<Box<dyn llm::Model>>>,
+    sessions: DashMap<Uuid, LLMrsSession>,
+    data_path: PathBuf,
+    uuid: Uuid
 }
 
 impl LLMrsConnector {
     pub fn new(uuid: Uuid, data_path: PathBuf, config: HashMap<String, Value>, model_path: PathBuf) -> LLMrsConnector {
-        LLMrsConnector {
+        let mut path = data_path.clone();
+        path.push(format!("llmrs-{}", uuid.to_string()));
+        let mut conn = LLMrsConnector {
             config: config,
+            uuid: uuid,
+            data_path: data_path,
             model_path: model_path,
-            model: RwLock::new(None)
-        }
+            model: RwLock::new(None),
+            sessions: DashMap::new(),
+        };
+        conn.deserialize_sessions();
+        conn
     }
+
+    //TODO: This is expensive as all hell, we should be doing this by individual sessions
+    // Utility functions to serialize and deserialize sessions
+    pub fn serialize_sessions(&self) -> Result<(), Box<dyn std::error::Error>> {
+        return Ok(()); //We skip serializing because inferencesessionref is missing in llmrs.
+        // let mut file = File::create(&self.data_path)?;
+
+        // let vec: Vec<LLMrsSessionSerial> = self.sessions.into_iter().map(|sess| {
+        //     let sess_guard = sess.1.lock().unwrap();
+        //     // We're immediately taking ownership and writing, and we're in the mutex,
+        //     // see https://github.com/rustformers/llm/blob/9123171ab1aa436fcfa45b9aaef90211534f9fdb/crates/llm-base/src/inference_session.rs#L540C1-L565C1
+        //     let session_snapshot = unsafe {sess_guard.model_session.get_snapshot()};
+        //     let llm_session = sess_guard.llm_session.clone();
+
+        //     LLMrsSessionSerial {
+        //         session_snapshot,
+        //         llm_session,
+        //     }
+        // }).collect();
+
+        // rmp_serde::encode::write_named(&mut file, &vec)?;
+        // Ok(())
+    }
+
+    pub fn deserialize_sessions(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        return Ok(());
+        //we skip deserializing because we skipped serializing
+        // let mut file = File::open(&self.data_path)?;
+        // let sessions_serial: Vec<LLMrsSessionSerial> = rmp_serde::decode::from_read(&file)?;
+        // let sessions: Vec<LLMrsSession> = sessions_serial.into_iter().map(|sess| sess.into()).collect();
+        // self.sessions = DashMap::new();
+        // sessions.into_iter().map(|sess| {
+        //     self.sessions.insert(sess.llm_session.id, Arc::new(Mutex::new(sess)));
+        // });
+        // Ok(())
+    }
+}
+
+#[derive(Clone)]
+struct LLMrsSession {
+    // We're doing inner mutex because we need to modify the llm_session even while holding
+    // the lock for the model_session, and we need to do so in closures that would deadlock
+    // otherwise.
+    model_session: Arc<Mutex<llm::InferenceSession>>,
+    llm_session: Arc<Mutex<LLMSession>>,
+}
+
+#[derive(Clone, serde::Serialize)]
+struct LLMrsSessionSerial {
+    // session_snapshot: llm::InferenceSnapshotRef,
+    llm_session: LLMSession,
+}
+
+#[derive(Clone, serde::Deserialize)]
+struct LLMrsSessionDeserial {
+    session_snapshot: llm::InferenceSnapshot,
+    llm_session: LLMSession,
 }
 
 #[async_trait]
 impl LLMInternalWrapper for LLMrsConnector {
-    async fn call_llm(self: &mut Self, msg: String, params: HashMap<String, Value>, user: User) -> Result<(Uuid, mpsc::Receiver<LLMEvent>), String> {
+    async fn call_llm(self: &mut Self, msg: String, session_params: HashMap<String, Value>, params: HashMap<String, Value>, user: User) -> Result<(Uuid, mpsc::Receiver<LLMEvent>), String> {
 
         todo!()
     }
@@ -57,6 +128,35 @@ impl LLMInternalWrapper for LLMrsConnector {
 
     async fn create_session(self: &mut Self, params: HashMap<String, Value>, user: User) -> Result<Uuid, String> {
 
+
+        let mut model_read = self.model.write().map_err(|err|format!("probably rwgard: {:?}", err))?;
+        //TODO: User settings for implementing gpu accel
+        let inference = model_read.as_mut().expect("model missing").start_session(Default::default());
+        let uuid = Uuid::new_v4();
+
+        let new_session = LLMrsSession {
+            model_session: Arc::new(Mutex::new(inference)),
+            llm_session: Arc::new(Mutex::new(LLMSession {
+                id: uuid,
+                started: Utc::now(),
+                last_called: Utc::now(),
+                user_id: user.id, // replace with actual user_id
+                llm_uuid: self.uuid.clone(), // replace with actual llm_uuid
+                session_parameters: params,
+                items: vec![],
+            }))
+        };
+
+        self.sessions.insert(uuid, new_session);
+
+
+        Ok(uuid)
+
+    } //uuid
+
+    async fn prompt_session(self: &mut Self, session_id: Uuid, prompt: String, params: HashMap<String, Value>, user: User) -> Result<mpsc::Receiver<LLMEvent>, String> {
+
+        println!("Received call to prompt session");
         let mut sampler = llm::samplers::TopPTopK::default();
         if let Some(Value::Number(n)) = self.config.get("top_k") {
             if let Some(top_k) = n.as_u64() {
@@ -94,16 +194,83 @@ impl LLMInternalWrapper for LLMrsConnector {
             }
         }
 
-        let inf_pams = llm::InferenceParameters {
+        let inf_params = llm::InferenceParameters {
             n_threads: 8,
             n_batch: 8,
             sampler: Arc::new(sampler),
         };
+        let session_wrapped = self.sessions.get(&session_id).ok_or("session not found")?;
+        let mut model_armed = session_wrapped.model_session.as_ref().lock()
+            .map_err(|err| format!("failed to acquire lock: {:?}", err))?;
 
-        todo!()
-    } //uuid
-    async fn prompt_session(self: &mut Self, session_id: Uuid, msg: String, user: User) -> Result<mpsc::Receiver<LLMEvent>, String> {
-        todo!()
+        let mut llm_session_armed = session_wrapped.llm_session.as_ref().lock()
+            .map_err(|err| format!("failed to acquire lock: {:?}", err))?;
+
+        // Do our own bookkeeping before calling the LLM.
+        let item_id = Uuid::new_v4();
+        let new_item = LLMHistoryItem {
+            id: item_id.clone(),
+            updated_timestamp: Utc::now(),
+            call_timestamp: Utc::now(),
+            complete: false, // initially false, will be set to true once response is received
+            parameters: params.clone(),
+            input: prompt.clone(),
+            output: "".into(),
+        };
+
+        llm_session_armed.items.push(new_item.clone());
+        llm_session_armed.last_called = Utc::now();
+
+        let (sender, receiver):(mpsc::Sender<LLMEvent>, mpsc::Receiver<LLMEvent>) = mpsc::channel(100);
+
+        println!("Attempting to infer");
+        // Call the llm
+        model_armed.infer::<mpsc::error::SendError<LLMEvent>>(
+            self.model.read().map_err(|err|format!("failed to get read lock on model {:?}", err))?
+                .as_ref().expect("Model is not available (opt is None)").as_ref(),
+            &mut rand::thread_rng(),
+            &llm::InferenceRequest {
+                prompt: (&prompt).into(),
+                parameters: &llm::InferenceParameters::default(),
+                play_back_previous_tokens: false,
+                maximum_token_count: None,
+            },
+            // OutputRequest
+            &mut Default::default(),
+            |r| match r {
+                llm::InferenceResponse::PromptToken(t) | llm::InferenceResponse::InferredToken(t) => {
+                    print!("{t}");
+
+                    let (sender, receiver):(mpsc::Sender<LLMEvent>, mpsc::Receiver<LLMEvent>) = mpsc::channel(100);
+                    let event = LLMEvent{
+                        stream_id: item_id.clone(),
+                        timestamp: new_item.updated_timestamp.clone(),
+                        call_timestamp: new_item.call_timestamp.clone(),
+                        parameters: new_item.parameters.clone(),
+                        input: prompt.clone(),
+                        llm_uuid: self.uuid.clone(),
+                        session: llm_session_armed.clone(),
+                        event:LLMEventInternal::PromptProgress { previous: "".into(), next: "boop".into() }
+                    };
+
+                    let send_clone = sender.clone();
+                    tokio::task::spawn( async move {
+                        let print_clone = event.event.clone();
+                        send_clone.send(event).await;
+                        println!("Sent an event from llmrs for {:?}", print_clone);
+                    });
+
+                    let update_item = llm_session_armed.items.iter_mut().find(|item| item.id == item_id).ok_or("couldn't find session we just made").unwrap();
+                    update_item.output.push_str(&t);
+                    Ok(llm::InferenceFeedback::Continue)
+
+                }
+                _ => Ok(llm::InferenceFeedback::Continue),
+            },
+        ).map_err(|err| format!("failure to infer with {:?}", err))?;
+
+        println!("Sending back receiver");
+        Ok(receiver)
     }
 
     async fn load_llm(self: &mut Self) -> Result<(), String> {

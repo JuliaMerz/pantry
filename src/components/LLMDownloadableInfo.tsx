@@ -117,6 +117,7 @@ const LLMDownloadableInfo: React.FC<LLMDownloadableInfoProps> = ({ llm, registry
         <Typography variant="body1"><b>User Parameters:</b> {llm.userParameters.join(", ")}</Typography>
         <Typography variant="body1"><b>Capabilities:</b> {JSON.stringify(llm.capabilities)}</Typography>
         <Typography variant="body1"><b>Parameters:</b> {JSON.stringify(llm.parameters)}</Typography>
+        <Typography variant="body1"><b>Session Parameters:</b> {JSON.stringify(llm.sessionParameters)}</Typography>
         <Typography variant="body1"><b>Config:</b> {JSON.stringify(llm.config)}</Typography>
       </CardContent>
     </Card>

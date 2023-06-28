@@ -78,22 +78,22 @@ impl Message for StatusMessage{
 
 
 #[derive(Clone, Debug)]
-pub struct CallLLMMessage(pub String, pub HashMap<String, Value>, pub User);
- // strin 1 is text, string 2 is parameters_json
+pub struct CallLLMMessage(pub String, pub HashMap<String, Value>, pub HashMap<String, Value>, pub User);
+ // prompt, session_params, user_params, user
 impl Message for CallLLMMessage {
     type Response = Result<(Uuid, mpsc::Receiver<connectors::LLMEvent>), String>;
 }
 
 #[derive(Clone, Debug)]
 pub struct CreateSessionMessage(pub HashMap<String, Value>, pub User);
- // initial prompt (may be empty), HashMap of Params.
+//hashmap of params
 impl Message for CreateSessionMessage {
     // Return session_id
     type Response = Result<Uuid, String>;
 }
 
 #[derive(Clone, Debug)]
-pub struct PromptSessionMessage(pub Uuid, pub String, pub User);
+pub struct PromptSessionMessage(pub Uuid, pub String, pub HashMap<String, Value>, pub User);
  // session_id, prompt
 impl Message for PromptSessionMessage {
     type Response = Result<mpsc::Receiver<connectors::LLMEvent>, String>;
@@ -137,7 +137,7 @@ impl Handler<connectors::SysEvent, StatusMessage> for LLMActor {
 #[async_trait]
 impl Handler<connectors::SysEvent, CallLLMMessage> for LLMActor {
     async fn handle(&mut self, msg: CallLLMMessage, ctx: &mut ActorContext<connectors::SysEvent>) -> Result<(Uuid, mpsc::Receiver<connectors::LLMEvent>), String> {
-        self.llm_internal.call_llm(msg.0, msg.1, msg.2).await
+        self.llm_internal.call_llm(msg.0, msg.1, msg.2, msg.3).await
     }
 
 }
@@ -153,6 +153,6 @@ impl Handler<connectors::SysEvent, CreateSessionMessage> for LLMActor {
 #[async_trait]
 impl Handler<connectors::SysEvent, PromptSessionMessage> for LLMActor {
     async fn handle(&mut self, msg: PromptSessionMessage, ctx: &mut ActorContext<connectors::SysEvent>) -> Result<mpsc::Receiver<connectors::LLMEvent>, String> {
-        self.llm_internal.prompt_session(msg.0, msg.1, msg.2).await
+        self.llm_internal.prompt_session(msg.0, msg.1, msg.2, msg.3).await
     }
 }

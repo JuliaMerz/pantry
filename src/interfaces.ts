@@ -24,6 +24,8 @@ interface LLM {
 
   parameters: {[id: string]: string};
   userParameters: string[];
+  sessionParameters: {[id: string]: string};
+  userSessionParameters: string[];
 };
 
 interface LLMAvailable extends LLM {
@@ -89,6 +91,8 @@ interface LLMRegistryEntry {
 
   parameters: {[id: string]: string};
   userParameters: string[];
+  sessionParameters: {[id: string]: string};
+  userSessionParameters: string[];
 
   downloadState: LLMDownloadState;
 }
@@ -122,7 +126,10 @@ function fromLLMRegistryEntry(frontendEntry: LLMRegistryEntry): any {
     config: keysToSnakeCaseUnsafe(frontendEntry.config),
     parameters: keysToSnakeCaseUnsafe(frontendEntry.parameters),
     user_parameters: keysToSnakeCaseUnsafe(frontendEntry.userParameters),
+    session_parameters: keysToSnakeCaseUnsafe(frontendEntry.userSessionParameters),
+    user_session_parameters: keysToSnakeCaseUnsafe(frontendEntry.userSessionParameters),
   };
+  console.log("backend entry:", backendEntry);
 
   return backendEntry;
 }
@@ -354,6 +361,8 @@ function toLLM(rustLLM: any): LLM {
     description: rustLLM.description,
     parameters: rustLLM.parameters,
     userParameters: rustLLM.user_parameters,
+    sessionParameters: rustLLM.session_parameters,
+    userSessionParameters: rustLLM.user_session_parameters,
     capabilities: rustLLM.capabilities,
     url: rustLLM.url,
     requirements: rustLLM.requirements,

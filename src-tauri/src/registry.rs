@@ -80,6 +80,9 @@ pub struct LLMRegistryEntry {
 
     pub parameters: HashMap<String, Value>,
     pub user_parameters: Vec<String>,
+
+    pub session_parameters: HashMap<String, Value>,
+    pub user_session_parameters: Vec<String>,
 }
 
 
@@ -172,6 +175,8 @@ pub async fn download_and_write_llm(
             config: llm_reg.config.clone(),
             parameters: llm_reg.parameters.clone(),
             user_parameters: llm_reg.user_parameters.clone(),
+            session_parameters: llm_reg.session_parameters.clone(),
+            user_session_parameters: llm_reg.user_session_parameters.clone(),
             model_path: Some(path.clone()),
 
     };

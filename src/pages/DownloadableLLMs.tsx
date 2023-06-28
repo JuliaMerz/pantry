@@ -28,7 +28,7 @@ import LLMDownloadableInfo from '../components/LLMDownloadableInfo';
 
 const LLM_INFO_SOURCE = "https://raw.githubusercontent.com/JuliaMerz/pantry/master/models/index.json";
 
-const REGISTRIES_STORAGE_KEY = "registries12";
+const REGISTRIES_STORAGE_KEY = "registries14";
 
 const NEW_REG_HELPER_TEXT = {
   id: 'id/name of the registry',
@@ -48,6 +48,8 @@ const NEW_REGISTRY_HELPER_TEXT = {
     license: 'MIT/Apache 2.0/etc.',
     parameters: 'Parameters set by the config, for ex hardcoded temperature.',
     userParameters: 'Parameters settable by the user when they call this model.',
+    sessionParameters: 'Session Parameters set by the config—there\'s very few or none of these.',
+    userSessionParameters: 'User configurable session parameters.',
     capabilities: 'Rated capabilities-Find the standard capabilities on the pantry github, and apply ratings to them. Capabilities left empty will be stored as "unrated". 0 represents "not capable".',
     tags: 'Comma separated tags, ex: "openai, gpt, conversational, remote"',
     url: 'Download URL for the model. Should be a ggml file atm.',
@@ -228,6 +230,8 @@ function DownloadableLLMs() {
     license: '',
     parameters: {}, // initialize with default LLMRegistry array
     userParameters: [],
+    sessionParameters: {}, // initialize with default LLMRegistry array
+    userSessionParameters: [],
     capabilities: {}, // initialize with default capabilities object
     tags: [],
     url: '',
@@ -322,12 +326,13 @@ function DownloadableLLMs() {
 
 
   // Create dynamic fields
-  type StringField = 'config' | 'parameters';
+  type StringField = 'config' | 'parameters' | 'sessionParameters';
   type NumericField = 'capabilities';
 
   const [dynamicKeyValuePairs, setDynamicKeyValuePairs] = useState<Record<StringField|NumericField, [string, string][]>>({
     config: [['', '']],
     parameters: [['', '']],
+    sessionParameters: [['', '']],
     capabilities: [['', '']],
   });
 
@@ -510,7 +515,7 @@ function DownloadableLLMs() {
               </Box>
             )}
 
-            {["config", "parameters"].map((key) =>
+            {["config", "parameters", "sessionParameters"].map((key) =>
               <Box>
                 <Typography variant="subtitle2">{NEW_REGISTRY_HELPER_TEXT[key as keyof typeof NEW_REGISTRY_HELPER_TEXT]}</Typography>
                 {Object.keys(dynamicKeyValuePairs[key as StringField]).map((subKey, index) => (

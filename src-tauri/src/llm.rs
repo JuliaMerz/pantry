@@ -49,7 +49,7 @@ pub struct CallLLMResponse {
 
 pub struct CreateSessionResponse {
     pub session_id: Uuid,
-    pub parameters: HashMap<String, Value>,
+    pub session_parameters: HashMap<String, Value>,
 }
 
 pub struct PromptSessionResponse {
@@ -64,8 +64,8 @@ pub trait LLMWrapper {
     async fn reload(&self) -> Result<(), PantryError>;
     async fn get_sessions(&self, user: user::User) -> Result<Vec<LLMSession>, PantryError>;
     async fn create_session(&self, params: HashMap<String, Value>, user: user::User) -> Result<CreateSessionResponse, PantryError>;
-    async fn prompt_session(&self, session_id: Uuid, prompt: String, user: user::User) -> Result<PromptSessionResponse, PantryError>;
-    async fn call_llm(&self, message: &str, parameters: HashMap<String, Value>, user: user::User) -> Result<CallLLMResponse, PantryError>;
+    async fn prompt_session(&self, session_id: Uuid, prompt: String, parameters: HashMap<String, Value>, user: user::User) -> Result<PromptSessionResponse, PantryError>;
+    async fn call_llm(&self, message: &str, session_parameters: HashMap<String, Value>, parameters: HashMap<String, Value>, user: user::User) -> Result<CallLLMResponse, PantryError>;
     fn into_llm_running(&self) -> frontend::LLMRunning;
 }
 
@@ -114,6 +114,13 @@ pub struct LLM {
     pub parameters: HashMap<String, Value>, // Hardcoded Parameters
     pub user_parameters: Vec<String>, //User Parameters
 
+    //These are the same, but for whole sessions.
+    //This is largely forward thinking, the only place we would implement
+    //this now would be useGPU.
+    //But we'll need ot eventually.
+    pub session_parameters: HashMap<String, Value>, // Hardcoded Parameters
+    pub user_session_parameters: Vec<String>,
+
 }
 
 pub struct LLMActivated {
@@ -142,7 +149,7 @@ pub struct LLMSession {
     pub last_called: DateTime<Utc>,
     pub user_id: Uuid,
     pub llm_uuid: Uuid,
-    pub parameters: HashMap<String, Value>,
+    pub session_parameters: HashMap<String, Value>,
     pub items: Vec<LLMHistoryItem>,
 }
 
@@ -177,6 +184,8 @@ impl Clone for LLM {
             model_path: self.model_path.clone(),
             parameters: self.parameters.clone(),
             user_parameters: self.user_parameters.clone(),
+            session_parameters: self.session_parameters.clone(),
+            user_session_parameters: self.user_session_parameters.clone(),
         }
     }
 }
@@ -266,8 +275,8 @@ impl LLMWrapper for LLMActivated {
     async fn create_session(&self, params: HashMap<String, Value>, user: user::User) -> Result<CreateSessionResponse, PantryError> {
         println!("Called create_session with LLM UUID {} and user {:?}", self.llm.uuid, user);
         // Reconcile Parameters
-        let mut armed_params = self.llm.parameters.clone();
-        for param in self.llm.user_parameters.iter() {
+        let mut armed_params = self.llm.session_parameters.clone();
+        for param in self.llm.user_session_parameters.iter() {
             if let Some(val) = params.get(param) {
                 armed_params.insert(param.clone(), json!(val.clone()));
             }
@@ -276,7 +285,7 @@ impl LLMWrapper for LLMActivated {
             Ok(result) => match result {
                 Ok(session_id) => Ok( CreateSessionResponse {
                     session_id: session_id,
-                    parameters: armed_params,
+                    session_parameters: armed_params,
                 }),
                 Err(err) => Err(PantryError::OtherFailure(err)),
             },
@@ -284,9 +293,9 @@ impl LLMWrapper for LLMActivated {
         }
     }
 
-    async fn prompt_session(&self, session_id: Uuid, prompt: String, user: user::User) -> Result<PromptSessionResponse, PantryError> {
+    async fn prompt_session(&self, session_id: Uuid, prompt: String, parameters: HashMap<String, Value>, user: user::User) -> Result<PromptSessionResponse, PantryError> {
         println!("Called prompt_session with LLM UUID {} and user {:?}", self.llm.uuid, user);
-        match self.actor.ask(llm_actor::PromptSessionMessage(session_id, prompt, user.into())).await {
+        match self.actor.ask(llm_actor::PromptSessionMessage(session_id, prompt, parameters, user.into())).await {
             Ok(result) => match result {
                 Ok(receiver) => Ok(PromptSessionResponse { stream: receiver }),
                 Err(err) => Err(PantryError::OtherFailure(err)),
@@ -298,10 +307,17 @@ impl LLMWrapper for LLMActivated {
 
 
     // kinda ugly that we need mutability here for a potentially long call, for a short mut.
-    async fn call_llm(&self, message: &str, parameters: HashMap<String, Value>, user: user::User) -> Result<CallLLMResponse, PantryError> {
+    async fn call_llm(&self, message: &str, session_parameters: HashMap<String, Value>, parameters: HashMap<String, Value>, user: user::User) -> Result<CallLLMResponse, PantryError> {
 
 
         // Reconcile Parameters
+        let mut armed_session_params = self.llm.session_parameters.clone();
+        for param in self.llm.user_session_parameters.iter() {
+            if let Some(val) = session_parameters.get(param) {
+                armed_session_params.insert(param.clone(), json!(val.clone()));
+            }
+        }
+
         let mut armed_params = self.llm.parameters.clone();
         for param in self.llm.user_parameters.iter() {
             if let Some(val) = parameters.get(param) {
@@ -311,7 +327,7 @@ impl LLMWrapper for LLMActivated {
 
         println!("Called {} with {} using {:?} and params {:?}", self.llm.id, message, self.actor, armed_params);
 
-        match self.actor.ask(llm_actor::CallLLMMessage(message.into(), armed_params.clone(), user)).await {
+        match self.actor.ask(llm_actor::CallLLMMessage(message.into(), armed_session_params.clone(), armed_params.clone(), user)).await {
             Ok(result) => match result {
                 Ok(pair) => {
 

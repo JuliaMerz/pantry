@@ -64,6 +64,7 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
   refreshFn,
 }) => {
   const [checked, setChecked] = useState(true);
+  const [userSessionParametersState, setUserSessionParametersState] = useState<{[id: string]: any}>(Object.fromEntries(llm.userSessionParameters.map((val)=>[val, undefined])));
   const [userParametersState, setUserParametersState] = useState<{[id: string]: any}>(Object.fromEntries(llm.userParameters.map((val)=>[val, undefined])));
   const [message, setMessage] = useState("");
   const [activeSessions, setActiveSessions] = useState<LLMSession[]>([]);
@@ -185,6 +186,11 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
     const result = await invoke('unload_llm', {uuid: llm.uuid});
     refreshFn();
   };
+  const handleSessionParameterChange = (name: string, value: string) => {
+    const newUserSessionParametersState = {...userSessionParametersState};
+    newUserSessionParametersState[name] = coerceInput(value);
+    setUserSessionParametersState(newUserSessionParametersState);
+  };
 
   const handleParameterChange = (name: string, value: string) => {
     const newUserParametersState = {...userParametersState};
@@ -221,7 +227,7 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
     console.log("attempting to create new session", llm.uuid);
 
     //call_llm is a shorthand for create_session+prompt_session
-    await invoke('call_llm', { llmUuid: llm.uuid, prompt:message, userParameters: userParametersState})
+    await invoke('call_llm', { llmUuid: llm.uuid, prompt:message, userSessionParameters: userSessionParametersState, userParameters: userParametersState})
       .then((response) => {
         console.log("call_llm response: ", response);
         setSelectedSessionId((response as any).data.session_id); //raw so underscore case
@@ -335,6 +341,16 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
                   ))}
                   <Box>
                     <form onSubmit={handleSessionSubmit}>
+                    <Typography component="label">Parameters:</Typography>
+                      {Object.entries(userParametersState).map(([paramName, paramValue], index) => (
+                        <Box key={index}>
+                          <TextField
+                            label={paramName}
+                            onChange={(e) => handleParameterChange(paramName, e.target.value)}
+                            variant="outlined"
+                          />
+                        </Box>
+                      ))}
                       <Box>
                         <TextField
                           label="Session Message"
@@ -353,16 +369,26 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
                 <Box>
                   <Typography variant="h5">Create a New Session</Typography>
                   <form onSubmit={handleNewSessionSubmit}>
-                    <Typography component="label">Parameters:</Typography>
-                    {Object.entries(userParametersState).map(([paramName, paramValue], index) => (
+                    <Typography component="label">Session Parameters:</Typography>
+                    {Object.entries(userSessionParametersState).map(([paramName, paramValue], index) => (
                       <Box key={index}>
                         <TextField
                           label={paramName}
-                          onChange={(e) => handleParameterChange(paramName, e.target.value)}
+                          onChange={(e) => handleSessionParameterChange(paramName, e.target.value)}
                           variant="outlined"
                         />
                       </Box>
                     ))}
+                    <Typography component="label">User Parameters:</Typography>
+                      {Object.entries(userParametersState).map(([paramName, paramValue], index) => (
+                        <Box key={index}>
+                          <TextField
+                            label={paramName}
+                            onChange={(e) => handleParameterChange(paramName, e.target.value)}
+                            variant="outlined"
+                          />
+                        </Box>
+                      ))}
                     <Box>
                       <TextField
                         label="Message"

@@ -409,7 +409,7 @@ pub struct PromptSessionResponse {
 
 #[derive(Debug, serde::Serialize )]
 pub struct CreateSessionResponse {
-    pub parameters: HashMap<String, Value>,
+    pub session_parameters: HashMap<String, Value>,
     pub llm_info: LLMInfo,
     pub session_id: String,
 }
@@ -434,15 +434,15 @@ pub async fn get_sessions(llm_uuid: String, app: AppHandle, state: tauri::State<
 }
 
 #[tauri::command]
-pub async fn create_session(llm_uuid: String, user_parameters: HashMap<String, Value>, app: AppHandle, state: tauri::State<'_, state::GlobalState>) -> Result<CommandResponse<CreateSessionResponse>, String> {
-    println!("Frontend called create_session for {} with parameters {:?} and user {:?}", llm_uuid, user_parameters, user::get_local_user());
+pub async fn create_session(llm_uuid: String, user_session_parameters: HashMap<String, Value>, app: AppHandle, state: tauri::State<'_, state::GlobalState>) -> Result<CommandResponse<CreateSessionResponse>, String> {
+    println!("Frontend called create_session for {} with parameters {:?} and user {:?}", llm_uuid, user_session_parameters, user::get_local_user());
     let uuid = Uuid::parse_str(&llm_uuid).map_err(|e| e.to_string())?;
     if let Some(llm) = state.activated_llms.get(&uuid) {
-        match llm.value().create_session(user_parameters, user::get_local_user()).await {
+        match llm.value().create_session(user_session_parameters, user::get_local_user()).await {
             Ok(resp) => {
                 Ok(CommandResponse {
                     data: CreateSessionResponse {
-                        parameters: resp.parameters,
+                        session_parameters: resp.session_parameters,
                         session_id: resp.session_id.to_string(),
                         llm_info: llm.llm.as_ref().into()
                     }
@@ -457,11 +457,11 @@ pub async fn create_session(llm_uuid: String, user_parameters: HashMap<String, V
 }
 
 #[tauri::command]
-pub async fn prompt_session(llm_uuid: String, session_id: Uuid, prompt: String, app: AppHandle, state: tauri::State<'_, state::GlobalState>) -> Result<CommandResponse<PromptSessionResponse>, String> {
+pub async fn prompt_session(llm_uuid: String, session_id: Uuid, prompt: String, parameters:HashMap<String, Value>, app: AppHandle, state: tauri::State<'_, state::GlobalState>) -> Result<CommandResponse<PromptSessionResponse>, String> {
     println!("Frontend called prompt_session with session_id {:?}, prompt {:?}, and user {:?}", session_id, prompt, user::get_local_user());
     let uuid = Uuid::parse_str(&llm_uuid).map_err(|e| e.to_string())?;
     if let Some(llm) = state.activated_llms.get(&uuid) {
-        match llm.value().prompt_session(session_id, prompt, user::get_local_user()).await {
+        match llm.value().prompt_session(session_id, prompt, parameters, user::get_local_user()).await {
             Ok(prompt_response) => {
                 tokio::spawn(async move {
                     emitter::send_events("llm_response".into(), session_id.to_string(), prompt_response.stream, app, |stream_id, event| {
@@ -489,7 +489,7 @@ pub async fn prompt_session(llm_uuid: String, session_id: Uuid, prompt: String, 
 }
 
 #[tauri::command]
-pub async fn call_llm(llm_uuid: String, prompt: String, user_parameters: HashMap<String, Value>, app: AppHandle, state: tauri::State<'_, state::GlobalState>) -> Result<CommandResponse<CallLLMResponse>, String> {
+pub async fn call_llm(llm_uuid: String, prompt: String, session_parameters: HashMap<String, Value>, user_parameters: HashMap<String, Value>, app: AppHandle, state: tauri::State<'_, state::GlobalState>) -> Result<CommandResponse<CallLLMResponse>, String> {
     let uuid = Uuid::parse_str(&llm_uuid).map_err(|e| e.to_string())?;
     println!("frontend called {} with {} and params {:?}", uuid, prompt, user_parameters);
     if let Some(llm) = state.activated_llms.get(&uuid) {
@@ -501,7 +501,7 @@ pub async fn call_llm(llm_uuid: String, prompt: String, user_parameters: HashMap
 
         println!("{:?}", llm.value().ping().await);
 
-        match llm.value().call_llm(&prompt, user_parameters, user::get_local_user()).await {
+        match llm.value().call_llm(&prompt, session_parameters, user_parameters, user::get_local_user()).await {
             Ok(llm_resp) => {
 
                     tokio::spawn(async move {

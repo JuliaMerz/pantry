@@ -70,12 +70,12 @@ impl From<LLMRegistryEntryConnector> for LLMConnectorType {
 /* Actually connect to the LLMs */
 #[async_trait]
 pub trait LLMInternalWrapper: Send + Sync {
-    async fn call_llm(self: &mut Self, msg: String, params: HashMap<String, Value>, user: user::User) -> Result<(Uuid, mpsc::Receiver<LLMEvent>), String>;
+    async fn call_llm(self: &mut Self, msg: String, session_params: HashMap<String, Value>, params: HashMap<String, Value>, user: user::User) -> Result<(Uuid, mpsc::Receiver<LLMEvent>), String>;
     async fn get_sessions(self: &Self, user: user::User) -> Result<Vec<LLMSession>, String>;
     //mut because we're going to modify our internal session storage
     async fn create_session(self: &mut Self, params: HashMap<String, Value>, user: user::User) -> Result<Uuid, String>; //uuid
     //mut because we're going to modify our internal session storage
-    async fn prompt_session(self: &mut Self, session_id: Uuid, msg: String, user: user::User) -> Result<mpsc::Receiver<LLMEvent>, String>;
+    async fn prompt_session(self: &mut Self, session_id: Uuid, msg: String, params: HashMap<String, Value>, user: user::User) -> Result<mpsc::Receiver<LLMEvent>, String>;
 
     async fn load_llm(self: &mut Self) -> Result<(), String>;
     async fn unload_llm(self: &Self, ) -> Result<(), String>; //called by shutdown
