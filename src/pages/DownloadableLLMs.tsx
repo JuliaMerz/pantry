@@ -28,7 +28,7 @@ import LLMDownloadableInfo from '../components/LLMDownloadableInfo';
 
 const LLM_INFO_SOURCE = "https://raw.githubusercontent.com/JuliaMerz/pantry/master/models/index.json";
 
-const REGISTRIES_STORAGE_KEY = "registries14";
+const REGISTRIES_STORAGE_KEY = "registries15";
 
 const NEW_REG_HELPER_TEXT = {
   id: 'id/name of the registry',

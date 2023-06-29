@@ -126,7 +126,7 @@ function fromLLMRegistryEntry(frontendEntry: LLMRegistryEntry): any {
     config: keysToSnakeCaseUnsafe(frontendEntry.config),
     parameters: keysToSnakeCaseUnsafe(frontendEntry.parameters),
     user_parameters: keysToSnakeCaseUnsafe(frontendEntry.userParameters),
-    session_parameters: keysToSnakeCaseUnsafe(frontendEntry.userSessionParameters),
+    session_parameters: keysToSnakeCaseUnsafe(frontendEntry.sessionParameters),
     user_session_parameters: keysToSnakeCaseUnsafe(frontendEntry.userSessionParameters),
   };
   console.log("backend entry:", backendEntry);

@@ -101,7 +101,7 @@ struct LLMrsSession {
     // the lock for the model_session, and we need to do so in closures that would deadlock
     // otherwise.
     model_session: Arc<Mutex<llm::InferenceSession>>,
-    llm_session: Arc<Mutex<LLMSession>>,
+    llm_session: Arc<RwLock<LLMSession>>,
 }
 
 #[derive(Clone, serde::Serialize)]
@@ -120,10 +120,22 @@ struct LLMrsSessionDeserial {
 impl LLMInternalWrapper for LLMrsConnector {
     async fn call_llm(self: &mut Self, msg: String, session_params: HashMap<String, Value>, params: HashMap<String, Value>, user: User) -> Result<(Uuid, mpsc::Receiver<LLMEvent>), String> {
 
-        todo!()
+        println!("Triggered call llm for {:?} with \"{}\" and {:?}", user, msg, params);
+
+        // Create a new session with the provided parameters
+        let session_id = self.create_session(session_params, user.clone()).await?;
+        println!("created a session");
+
+        // Now that a new session is created, we need to prompt it immediately with the given message
+        match self.prompt_session(session_id, msg, params, user).await {
+            Ok(stream) => Ok((session_id, stream)),
+            Err(e) => Err(e)
+        }
     }
     async fn get_sessions(self: &Self, user: User) -> Result<Vec<LLMSession>, String> {
-        todo!()
+
+        let sesss: Vec<LLMSession> = self.sessions.iter().filter(|ff| ff.value().llm_session.read().unwrap().user_id == user.id).map(|ff| ff.value().llm_session.as_ref().read().unwrap().clone()).collect();
+        return Ok(sesss);
     }
 
     async fn create_session(self: &mut Self, params: HashMap<String, Value>, user: User) -> Result<Uuid, String> {
@@ -136,7 +148,7 @@ impl LLMInternalWrapper for LLMrsConnector {
 
         let new_session = LLMrsSession {
             model_session: Arc::new(Mutex::new(inference)),
-            llm_session: Arc::new(Mutex::new(LLMSession {
+            llm_session: Arc::new(RwLock::new(LLMSession {
                 id: uuid,
                 started: Utc::now(),
                 last_called: Utc::now(),
@@ -155,6 +167,11 @@ impl LLMInternalWrapper for LLMrsConnector {
     } //uuid
 
     async fn prompt_session(self: &mut Self, session_id: Uuid, prompt: String, params: HashMap<String, Value>, user: User) -> Result<mpsc::Receiver<LLMEvent>, String> {
+
+        // The infer function is blocking, and once we start we can't move to another thread
+        // which means we need to move to another thread NOW and return our sender.
+        //
+        // The alternative is acknowledging that we should have passed in the sender
 
         println!("Received call to prompt session");
         let mut sampler = llm::samplers::TopPTopK::default();
@@ -203,7 +220,7 @@ impl LLMInternalWrapper for LLMrsConnector {
         let mut model_armed = session_wrapped.model_session.as_ref().lock()
             .map_err(|err| format!("failed to acquire lock: {:?}", err))?;
 
-        let mut llm_session_armed = session_wrapped.llm_session.as_ref().lock()
+        let mut llm_session_armed = session_wrapped.llm_session.as_ref().write()
             .map_err(|err| format!("failed to acquire lock: {:?}", err))?;
 
         // Do our own bookkeeping before calling the LLM.
@@ -241,7 +258,10 @@ impl LLMInternalWrapper for LLMrsConnector {
                 llm::InferenceResponse::PromptToken(t) | llm::InferenceResponse::InferredToken(t) => {
                     print!("{t}");
 
-                    let (sender, receiver):(mpsc::Sender<LLMEvent>, mpsc::Receiver<LLMEvent>) = mpsc::channel(100);
+                    let session_clone = llm_session_armed.clone();
+
+                    let update_item = llm_session_armed.items.iter_mut().find(|item| item.id == item_id).ok_or("couldn't find session we just made").unwrap();
+
                     let event = LLMEvent{
                         stream_id: item_id.clone(),
                         timestamp: new_item.updated_timestamp.clone(),
@@ -249,8 +269,8 @@ impl LLMInternalWrapper for LLMrsConnector {
                         parameters: new_item.parameters.clone(),
                         input: prompt.clone(),
                         llm_uuid: self.uuid.clone(),
-                        session: llm_session_armed.clone(),
-                        event:LLMEventInternal::PromptProgress { previous: "".into(), next: "boop".into() }
+                        session: session_clone,
+                        event:LLMEventInternal::PromptProgress { previous: update_item.output.clone().into(), next: t.clone() }
                     };
 
                     let send_clone = sender.clone();
@@ -260,7 +280,6 @@ impl LLMInternalWrapper for LLMrsConnector {
                         println!("Sent an event from llmrs for {:?}", print_clone);
                     });
 
-                    let update_item = llm_session_armed.items.iter_mut().find(|item| item.id == item_id).ok_or("couldn't find session we just made").unwrap();
                     update_item.output.push_str(&t);
                     Ok(llm::InferenceFeedback::Continue)
 

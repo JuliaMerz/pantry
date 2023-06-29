@@ -58,6 +58,8 @@ pub struct LLMInfo {
     //to get details.
     pub parameters: HashMap<String, Value>, // Hardcoded Parameters
     pub user_parameters: Vec<String>, //User Parameters
+    pub session_parameters: HashMap<String, Value>, // Hardcoded Parameters
+    pub user_session_parameters: Vec<String>, //User Parameters
 
 
 }
@@ -115,6 +117,8 @@ impl From<&llm::LLM> for LLMInfo {
                 description: value.description.clone(),
                 parameters: value.parameters.clone(),
                 user_parameters: value.user_parameters.clone(),
+                session_parameters: value.session_parameters.clone(),
+                user_session_parameters: value.user_session_parameters.clone(),
 
                 capabilities: value.capabilities.clone(),
                 homepage: value.homepage.clone(),
@@ -178,6 +182,8 @@ pub async fn get_requests(state: tauri::State<'_, state::GlobalState>) -> Result
         description: "I'm a little llm, short and stout!".into(),
         parameters: HashMap::from([("color".into(), "green".into())]),
         user_parameters: vec!["shape".into()],
+        session_parameters: HashMap::from([("session".into(), "red".into())]),
+        user_session_parameters: vec!["session".into()],
         connector_type: connectors::LLMConnectorType::GenericAPI.to_string(),
         capabilities: HashMap::from([("TEXT_COMPLETION".into(), 10), ("CONVERSATION".into(), 10)]),
         config: HashMap::from([]),
@@ -489,7 +495,7 @@ pub async fn prompt_session(llm_uuid: String, session_id: Uuid, prompt: String, 
 }
 
 #[tauri::command]
-pub async fn call_llm(llm_uuid: String, prompt: String, session_parameters: HashMap<String, Value>, user_parameters: HashMap<String, Value>, app: AppHandle, state: tauri::State<'_, state::GlobalState>) -> Result<CommandResponse<CallLLMResponse>, String> {
+pub async fn call_llm(llm_uuid: String, prompt: String, user_session_parameters: HashMap<String, Value>, user_parameters: HashMap<String, Value>, app: AppHandle, state: tauri::State<'_, state::GlobalState>) -> Result<CommandResponse<CallLLMResponse>, String> {
     let uuid = Uuid::parse_str(&llm_uuid).map_err(|e| e.to_string())?;
     println!("frontend called {} with {} and params {:?}", uuid, prompt, user_parameters);
     if let Some(llm) = state.activated_llms.get(&uuid) {
@@ -501,7 +507,7 @@ pub async fn call_llm(llm_uuid: String, prompt: String, session_parameters: Hash
 
         println!("{:?}", llm.value().ping().await);
 
-        match llm.value().call_llm(&prompt, session_parameters, user_parameters, user::get_local_user()).await {
+        match llm.value().call_llm(&prompt, user_session_parameters, user_parameters, user::get_local_user()).await {
             Ok(llm_resp) => {
 
                     tokio::spawn(async move {

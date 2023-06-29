@@ -281,7 +281,10 @@ impl LLMWrapper for LLMActivated {
                 armed_params.insert(param.clone(), json!(val.clone()));
             }
         }
-        match self.actor.ask(llm_actor::CreateSessionMessage(armed_params.clone(), user.into())).await {
+        match self.actor.ask(llm_actor::CreateSessionMessage {
+            session_params: armed_params.clone(),
+            user: user.into()
+        }).await {
             Ok(result) => match result {
                 Ok(session_id) => Ok( CreateSessionResponse {
                     session_id: session_id,
@@ -295,7 +298,15 @@ impl LLMWrapper for LLMActivated {
 
     async fn prompt_session(&self, session_id: Uuid, prompt: String, parameters: HashMap<String, Value>, user: user::User) -> Result<PromptSessionResponse, PantryError> {
         println!("Called prompt_session with LLM UUID {} and user {:?}", self.llm.uuid, user);
-        match self.actor.ask(llm_actor::PromptSessionMessage(session_id, prompt, parameters, user.into())).await {
+
+        let (sender, receiver):(mpsc::Sender<connectors::LLMEvent>, mpsc::Receiver<connectors::LLMEvent>) = mpsc::channel(100);
+        match self.actor.ask(llm_actor::PromptSessionMessage {
+            session_uuid: session_id,
+            prompt: prompt,
+            prompt_params: parameters,
+            user: user.into(),
+            sender: sender
+        }).await {
             Ok(result) => match result {
                 Ok(receiver) => Ok(PromptSessionResponse { stream: receiver }),
                 Err(err) => Err(PantryError::OtherFailure(err)),
@@ -325,9 +336,20 @@ impl LLMWrapper for LLMActivated {
             }
         }
 
+        // We need to create the sender here, so we can stick the non-async LLM
+        // compute into a separate thread.
+        let (sender, receiver):(mpsc::Sender<connectors::LLMEvent>, mpsc::Receiver<connectors::LLMEvent>) = mpsc::channel(100);
+
+
         println!("Called {} with {} using {:?} and params {:?}", self.llm.id, message, self.actor, armed_params);
 
-        match self.actor.ask(llm_actor::CallLLMMessage(message.into(), armed_session_params.clone(), armed_params.clone(), user)).await {
+        match self.actor.ask(llm_actor::CallLLMMessage {
+            message: message.into(),
+            session_params: armed_session_params.clone(),
+            prompt_params: armed_params.clone(),
+            user: user,
+            sender: sender,
+        }).await {
             Ok(result) => match result {
                 Ok(pair) => {
 
@@ -340,11 +362,7 @@ impl LLMWrapper for LLMActivated {
                 Err(err) => Err(PantryError::OtherFailure(err))
             },
             Err(err) => Err(PantryError::ActorFailure(err))
-
         }
-
-
-
     }
 
     fn into_llm_running(&self) -> frontend::LLMRunning {

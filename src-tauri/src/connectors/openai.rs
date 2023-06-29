@@ -106,7 +106,7 @@ impl LLMInternalWrapper for OpenAIConnector {
         }
 
     } //uuid
-    async fn prompt_session(&mut self, session_id: Uuid, msg: String, params: HashMap<String, Value>, user: User) -> Result<mpsc::Receiver<LLMEvent>, String> {
+    async fn prompt_session(&mut self, session_id: Uuid, msg: String, params: HashMap<String, Value>, user: User, sender:mpsc::Sender<connectors::LLMEvent>) -> Result<mpsc::Receiver<LLMEvent>, String> {
         // Here we find the session by ID in our sessions vector
         println!("attempting to find session");
         let resp = match self.sessions.iter_mut().find(|session| session.id == session_id) {

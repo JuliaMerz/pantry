@@ -11,6 +11,8 @@ use connectors::LLMInternalWrapper;
 
 use uuid::Uuid;
 
+use super::LLMEvent;
+
 
 
 //src/connectors/llm_actor.rs
@@ -78,14 +80,23 @@ impl Message for StatusMessage{
 
 
 #[derive(Clone, Debug)]
-pub struct CallLLMMessage(pub String, pub HashMap<String, Value>, pub HashMap<String, Value>, pub User);
- // prompt, session_params, user_params, user
+pub struct CallLLMMessage {
+    pub message: String,
+    pub session_params: HashMap<String, Value>,
+    pub prompt_params: HashMap<String, Value>,
+    pub user: User,
+    pub sender: mpsc::Sender<connectors::LLMEvent>
+}
+ // prompt, session_params, prompt_params, user
 impl Message for CallLLMMessage {
-    type Response = Result<(Uuid, mpsc::Receiver<connectors::LLMEvent>), String>;
+    type Response = Result<Uuid, String>;
 }
 
 #[derive(Clone, Debug)]
-pub struct CreateSessionMessage(pub HashMap<String, Value>, pub User);
+pub struct CreateSessionMessage {
+    pub session_params: HashMap<String, Value>,
+    pub user: User
+}
 //hashmap of params
 impl Message for CreateSessionMessage {
     // Return session_id
@@ -93,10 +104,16 @@ impl Message for CreateSessionMessage {
 }
 
 #[derive(Clone, Debug)]
-pub struct PromptSessionMessage(pub Uuid, pub String, pub HashMap<String, Value>, pub User);
+pub struct PromptSessionMessage{
+    pub session_uuid: Uuid,
+    pub prompt: String,
+    pub prompt_params: HashMap<String, Value>,
+    pub user: User,
+    pub sender: mpsc::Sender<connectors::LLMEvent>
+}
  // session_id, prompt
 impl Message for PromptSessionMessage {
-    type Response = Result<mpsc::Receiver<connectors::LLMEvent>, String>;
+    type Response = Result<(), String>;
 }
 
 
@@ -136,8 +153,8 @@ impl Handler<connectors::SysEvent, StatusMessage> for LLMActor {
 
 #[async_trait]
 impl Handler<connectors::SysEvent, CallLLMMessage> for LLMActor {
-    async fn handle(&mut self, msg: CallLLMMessage, ctx: &mut ActorContext<connectors::SysEvent>) -> Result<(Uuid, mpsc::Receiver<connectors::LLMEvent>), String> {
-        self.llm_internal.call_llm(msg.0, msg.1, msg.2, msg.3).await
+    async fn handle(&mut self, msg: CallLLMMessage, ctx: &mut ActorContext<connectors::SysEvent>) -> Result<Uuid, String> {
+        self.llm_internal.call_llm(msg.message, msg.session_params, msg.prompt_params, msg.user, msg.sender).await
     }
 
 }
@@ -145,7 +162,7 @@ impl Handler<connectors::SysEvent, CallLLMMessage> for LLMActor {
 #[async_trait]
 impl Handler<connectors::SysEvent, CreateSessionMessage> for LLMActor {
     async fn handle(&mut self, msg: CreateSessionMessage, ctx: &mut ActorContext<connectors::SysEvent>) -> Result<Uuid, String> {
-        self.llm_internal.create_session(msg.0, msg.1).await
+        self.llm_internal.create_session(msg.session_params, msg.user).await
     }
 }
 
@@ -153,6 +170,6 @@ impl Handler<connectors::SysEvent, CreateSessionMessage> for LLMActor {
 #[async_trait]
 impl Handler<connectors::SysEvent, PromptSessionMessage> for LLMActor {
     async fn handle(&mut self, msg: PromptSessionMessage, ctx: &mut ActorContext<connectors::SysEvent>) -> Result<mpsc::Receiver<connectors::LLMEvent>, String> {
-        self.llm_internal.prompt_session(msg.0, msg.1, msg.2, msg.3).await
+        self.llm_internal.prompt_session(msg.session_uuid, msg.prompt, msg.prompt_params, msg.user, msg.sender).await
     }
 }
