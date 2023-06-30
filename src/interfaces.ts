@@ -254,7 +254,8 @@ type LLMSession = {
   lastCalled: Date;
   name: string; //We don't get this from the server
   llmUuid: string;
-  parameters: {[key: string]: string};
+  session_parameters: {[key: string]: string};
+  userId: string;
   items: LLMHistoryItem[];
 };
 
@@ -283,7 +284,8 @@ function toLLMSession(rustSession: any): LLMSession {
     lastCalled: new Date(rustSession.last_called),
     name: "",  // Since this isn't provided by the server, set an empty string or some default value.
     llmUuid: rustSession.llm_uuid,
-    parameters: rustSession.parameters,
+    session_parameters: rustSession.session_parameters,
+    userId: rustSession.userId,
     items: rustSession.items.map((item: any) => toLLMHistoryItem(item))
   }
 }

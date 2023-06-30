@@ -58,19 +58,19 @@ impl OpenAIConnector {
 
 #[async_trait]
 impl LLMInternalWrapper for OpenAIConnector {
-    async fn call_llm(&mut self, msg: String, session_params: HashMap<String, Value>, params: HashMap<String, Value>, user: User) -> Result<(Uuid, mpsc::Receiver<LLMEvent>), String> {
-        println!("Triggered call llm for {:?} with \"{}\" and {:?}", user, msg, params);
+    // async fn call_llm(&mut self, msg: String, session_params: HashMap<String, Value>, params: HashMap<String, Value>, user: User) -> Result<(Uuid, mpsc::Receiver<LLMEvent>), String> {
+    //     println!("Triggered call llm for {:?} with \"{}\" and {:?}", user, msg, params);
 
-        // Create a new session with the provided parameters
-        let session_id = self.create_session(session_params, user.clone()).await?;
-        println!("created a session");
+    //     // Create a new session with the provided parameters
+    //     let session_id = self.create_session(session_params, user.clone()).await?;
+    //     println!("created a session");
 
-        // Now that a new session is created, we need to prompt it immediately with the given message
-        match self.prompt_session(session_id, msg, params, user).await {
-            Ok(stream) => Ok((session_id, stream)),
-            Err(e) => Err(e)
-        }
-    }
+    //     // Now that a new session is created, we need to prompt it immediately with the given message
+    //     match self.prompt_session(session_id, msg, params, user).await {
+    //         Ok(stream) => Ok((session_id, stream)),
+    //         Err(e) => Err(e)
+    //     }
+    // }
 
     async fn get_sessions(&self, user: User) -> Result<Vec<LLMSession>, String> {
         // Filter sessions by user ID and clone them into a new vector
@@ -106,10 +106,10 @@ impl LLMInternalWrapper for OpenAIConnector {
         }
 
     } //uuid
-    async fn prompt_session(&mut self, session_id: Uuid, msg: String, params: HashMap<String, Value>, user: User, sender:mpsc::Sender<connectors::LLMEvent>) -> Result<mpsc::Receiver<LLMEvent>, String> {
+    async fn prompt_session(&mut self, session_id: Uuid, msg: String, params: HashMap<String, Value>, user: User, sender:mpsc::Sender<LLMEvent>) -> Result<(), String> {
         // Here we find the session by ID in our sessions vector
         println!("attempting to find session");
-        let resp = match self.sessions.iter_mut().find(|session| session.id == session_id) {
+        match self.sessions.iter_mut().find(|session| session.id == session_id) {
             Some(mut session) => {
                 // If the session is found, we add a new history item
                 let item_id = Uuid::new_v4();
@@ -129,7 +129,6 @@ impl LLMInternalWrapper for OpenAIConnector {
                 // Here you should actually make the API call using the session and msg.
                 // eventual opani api calls
 
-                let (sender, receiver):(mpsc::Sender<LLMEvent>, mpsc::Receiver<LLMEvent>) = mpsc::channel(100);
                 sender.send(LLMEvent{
                     stream_id: item_id.clone(),
                     timestamp: new_item.updated_timestamp.clone(),
@@ -158,14 +157,13 @@ impl LLMInternalWrapper for OpenAIConnector {
 
 
 
-                Ok(receiver)
             },
-            None => Err(format!("Session with id {} not found.", session_id)),
+            None => println!("Session with id {} not found.", session_id),
         };
         println!("before serialize");
         self.serialize_sessions();
         println!("after serialize");
-        resp
+        Ok(())
     }
     async fn load_llm(self: &mut Self) -> Result<(), String> {
 

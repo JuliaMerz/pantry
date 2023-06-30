@@ -151,13 +151,13 @@ impl Handler<connectors::SysEvent, StatusMessage> for LLMActor {
 }
 
 
-#[async_trait]
-impl Handler<connectors::SysEvent, CallLLMMessage> for LLMActor {
-    async fn handle(&mut self, msg: CallLLMMessage, ctx: &mut ActorContext<connectors::SysEvent>) -> Result<Uuid, String> {
-        self.llm_internal.call_llm(msg.message, msg.session_params, msg.prompt_params, msg.user, msg.sender).await
-    }
+// #[async_trait]
+// impl Handler<connectors::SysEvent, CallLLMMessage> for LLMActor {
+//     async fn handle(&mut self, msg: CallLLMMessage, ctx: &mut ActorContext<connectors::SysEvent>) -> Result<Uuid, String> {
+//         self.llm_internal.call_llm(msg.message, msg.session_params, msg.prompt_params, msg.user, msg.sender).await
+//     }
 
-}
+// }
 
 #[async_trait]
 impl Handler<connectors::SysEvent, CreateSessionMessage> for LLMActor {
@@ -169,7 +169,7 @@ impl Handler<connectors::SysEvent, CreateSessionMessage> for LLMActor {
 
 #[async_trait]
 impl Handler<connectors::SysEvent, PromptSessionMessage> for LLMActor {
-    async fn handle(&mut self, msg: PromptSessionMessage, ctx: &mut ActorContext<connectors::SysEvent>) -> Result<mpsc::Receiver<connectors::LLMEvent>, String> {
+    async fn handle(&mut self, msg: PromptSessionMessage, ctx: &mut ActorContext<connectors::SysEvent>) -> Result<(), String> {
         self.llm_internal.prompt_session(msg.session_uuid, msg.prompt, msg.prompt_params, msg.user, msg.sender).await
     }
 }

@@ -10,6 +10,7 @@ import { Box,
   Typography,
   Card,
   CardContent,
+  CircularProgress,
   TableContainer,
   Table,
   TableHead,
@@ -111,7 +112,7 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
             name: '', // You mentioned that we don't get the name from the server.
             lastCalled: payload.session?.lastCalled || new Date(),
             llmUuid: payload.llmUuid,
-            parameters: payload.session?.parameters || {},
+            session_parameters: payload.session?.session_parameters || {},
             items: [],
           };
         } else {
@@ -138,8 +139,10 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
           // TODO: FIGURE OUT WHY INPUT/OUTPUT IS NOT UPDATING.
           // If the history item exists, update it.
           historyItem = session.items[historyItemIndex];
-          if(payload.callTimestamp > historyItem.updateTimestamp) {
+          if(payload.timestamp > historyItem.updateTimestamp) {
+            historyItem.updateTimestamp = payload.timestamp
             if (payload.event.type === "PromptProgress") {
+              console.log("adding next");
               historyItem.output = payload.event.previous+payload.event.next; // Assuming the output is in the previous field of the event
             }
             if (payload.event.type === "PromptCompletion") {
@@ -147,10 +150,12 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
               historyItem.complete = true;
             }
             session.items[historyItemIndex] = historyItem;
+          }else {
+            console.log("timestamps kip");
           }
         }
 
-        console.log("setting out to", session.items[0].output, payload);
+        console.log("setting out to", session.items[0].output, payload, session);
         if (isNewSession) {
           return [...currentSessions, session];
         } else {
@@ -266,13 +271,18 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
               </Select>
             </Box>
 
-            {selectedSessionId !== 'New Session' ? (activeSessions.map((session) => (
+            {selectedSessionId !== 'New Session' ? (activeSessions.findIndex((sess) => {return sess.id == selectedSessionId}) == -1 ? (
+              <Box key={setSelectedSessionId}>
+                      <CircularProgress />
+              </Box>
+                                                                                                                             ) :
+                      activeSessions.map((session) => (
               session.id === selectedSessionId && (
                 <Box key={session.id}>
                   <Typography variant="h4">{session.name ? `Session: ${session.name}` : `Session ID: ${session.id}`}</Typography>
                   <Typography variant="subtitle2">Started At: {session.started.toString()}</Typography>
                   <Typography variant="h5">Session Parameters:</Typography>
-                  {Object.keys(session.parameters).length > 0 ? (
+                  {Object.keys(session.session_parameters).length > 0 ? (
                     <TableContainer component={Paper}>
                       <Table size="small" aria-label="llm details">
                         <TableHead>
@@ -282,7 +292,7 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
                           </TableRow>
                         </TableHead>
                         <TableBody>
-                          {Object.entries(session.parameters).map(([paramName, paramValue], index) => (
+                          {Object.entries(session.session_parameters).map(([paramName, paramValue], index) => (
                             <TableRow key={index}>
                               <TableCell>{paramName}</TableCell>
                               <TableCell>{paramValue}</TableCell>

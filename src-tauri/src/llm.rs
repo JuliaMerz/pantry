@@ -299,20 +299,42 @@ impl LLMWrapper for LLMActivated {
     async fn prompt_session(&self, session_id: Uuid, prompt: String, parameters: HashMap<String, Value>, user: user::User) -> Result<PromptSessionResponse, PantryError> {
         println!("Called prompt_session with LLM UUID {} and user {:?}", self.llm.uuid, user);
 
+        // Reconcile Parameters
+        let mut armed_params = self.llm.parameters.clone();
+        for param in self.llm.user_parameters.iter() {
+            if let Some(val) = parameters.get(param) {
+                armed_params.insert(param.clone(), json!(val.clone()));
+            }
+        }
+
         let (sender, receiver):(mpsc::Sender<connectors::LLMEvent>, mpsc::Receiver<connectors::LLMEvent>) = mpsc::channel(100);
-        match self.actor.ask(llm_actor::PromptSessionMessage {
-            session_uuid: session_id,
-            prompt: prompt,
-            prompt_params: parameters,
+
+        let msg:String = prompt.clone().into();
+        let act = self.actor.clone();
+
+        tokio::spawn( async move {
+        match act.ask(llm_actor::PromptSessionMessage {
+            session_uuid: session_id.clone(),
+            prompt: msg,
+            prompt_params: armed_params.clone(),
             user: user.into(),
             sender: sender
         }).await {
-            Ok(result) => match result {
-                Ok(receiver) => Ok(PromptSessionResponse { stream: receiver }),
-                Err(err) => Err(PantryError::OtherFailure(err)),
-            },
-            Err(err) => Err(PantryError::ActorFailure(err)),
-        }
+                Ok(result) => match result {
+                    Ok(()) => {
+                        println!("Completed inference successfully.");
+                    },
+                    Err(err) => {
+                        println!("Failed to complete inference: {:?}", err);
+                    }
+                },
+                Err(err) => {
+                    println!("Failed to send inference message: {:?}", err);
+                }
+            }
+        });
+
+        Ok(PromptSessionResponse { stream: receiver })
     }
 
 
@@ -343,26 +365,65 @@ impl LLMWrapper for LLMActivated {
 
         println!("Called {} with {} using {:?} and params {:?}", self.llm.id, message, self.actor, armed_params);
 
-        match self.actor.ask(llm_actor::CallLLMMessage {
-            message: message.into(),
+        let session_uuid: Uuid = self.actor.ask(llm_actor::CreateSessionMessage {
             session_params: armed_session_params.clone(),
-            prompt_params: armed_params.clone(),
-            user: user,
-            sender: sender,
-        }).await {
-            Ok(result) => match result {
-                Ok(pair) => {
+            user: user.clone()
+        }).await.map_err(|err|format!("Failed to send: {:?}", err))?
+        .map_err(|err|format!("Failed to create session: {:?}", err))?;
 
-                    Ok(CallLLMResponse {
-                        session_id: pair.0,
-                        stream: pair.1,
-                        parameters: armed_params,
-                    })
+        let resp = CallLLMResponse {
+            session_id: session_uuid.clone(),
+            stream: receiver,
+            parameters: armed_params.clone(),
+        };
+        let act = self.actor.clone();
+        let msg:String = message.clone().into();
+
+        tokio::spawn( async move {
+            match act.ask(llm_actor::PromptSessionMessage {
+                session_uuid: session_uuid,
+                prompt: msg.into(),
+                prompt_params: armed_params.clone(),
+                user: user,
+                sender: sender,
+            }).await {
+                Ok(result) => match result {
+                    Ok(()) => {
+                        println!("Completed inference successfully.");
+                    },
+                    Err(err) => {
+                        println!("Failed to complete inference: {:?}", err);
+                    }
                 },
-                Err(err) => Err(PantryError::OtherFailure(err))
-            },
-            Err(err) => Err(PantryError::ActorFailure(err))
-        }
+                Err(err) => {
+                    println!("Failed to send inference message: {:?}", err);
+                }
+            }
+        });
+
+        Ok(resp)
+
+
+//         match self.actor.ask(llm_actor::CallLLMMessage {
+//             message: message.into(),
+//             session_params: armed_session_params.clone(),
+//             prompt_params: armed_params.clone(),
+//             user: user,
+//             sender: sender,
+//         }).await {
+//             Ok(result) => match result {
+//                 Ok(pair) => {
+
+//                     Ok(CallLLMResponse {
+//                         session_id: pair.0,
+//                         stream: pair.1,
+//                         parameters: armed_params,
+//                     })
+//                 },
+//                 Err(err) => Err(PantryError::OtherFailure(err))
+//             },
+//             Err(err) => Err(PantryError::ActorFailure(err))
+//         }
     }
 
     fn into_llm_running(&self) -> frontend::LLMRunning {

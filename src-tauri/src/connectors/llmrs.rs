@@ -118,20 +118,20 @@ struct LLMrsSessionDeserial {
 
 #[async_trait]
 impl LLMInternalWrapper for LLMrsConnector {
-    async fn call_llm(self: &mut Self, msg: String, session_params: HashMap<String, Value>, params: HashMap<String, Value>, user: User) -> Result<(Uuid, mpsc::Receiver<LLMEvent>), String> {
+    // async fn call_llm(self: &mut Self, msg: String, session_params: HashMap<String, Value>, params: HashMap<String, Value>, user: User) -> Result<(Uuid, mpsc::Receiver<LLMEvent>), String> {
 
-        println!("Triggered call llm for {:?} with \"{}\" and {:?}", user, msg, params);
+    //     println!("Triggered call llm for {:?} with \"{}\" and {:?}", user, msg, params);
 
-        // Create a new session with the provided parameters
-        let session_id = self.create_session(session_params, user.clone()).await?;
-        println!("created a session");
+    //     // Create a new session with the provided parameters
+    //     let session_id = self.create_session(session_params, user.clone()).await?;
+    //     println!("created a session");
 
-        // Now that a new session is created, we need to prompt it immediately with the given message
-        match self.prompt_session(session_id, msg, params, user).await {
-            Ok(stream) => Ok((session_id, stream)),
-            Err(e) => Err(e)
-        }
-    }
+    //     // Now that a new session is created, we need to prompt it immediately with the given message
+    //     match self.prompt_session(session_id, msg, params, user).await {
+    //         Ok(stream) => Ok((session_id, stream)),
+    //         Err(e) => Err(e)
+    //     }
+    // }
     async fn get_sessions(self: &Self, user: User) -> Result<Vec<LLMSession>, String> {
 
         let sesss: Vec<LLMSession> = self.sessions.iter().filter(|ff| ff.value().llm_session.read().unwrap().user_id == user.id).map(|ff| ff.value().llm_session.as_ref().read().unwrap().clone()).collect();
@@ -166,7 +166,7 @@ impl LLMInternalWrapper for LLMrsConnector {
 
     } //uuid
 
-    async fn prompt_session(self: &mut Self, session_id: Uuid, prompt: String, params: HashMap<String, Value>, user: User) -> Result<mpsc::Receiver<LLMEvent>, String> {
+    async fn prompt_session(self: &mut Self, session_id: Uuid, prompt: String, params: HashMap<String, Value>, user: User, sender: mpsc::Sender<LLMEvent>) -> Result<(), String> {
 
         // The infer function is blocking, and once we start we can't move to another thread
         // which means we need to move to another thread NOW and return our sender.
@@ -238,7 +238,6 @@ impl LLMInternalWrapper for LLMrsConnector {
         llm_session_armed.items.push(new_item.clone());
         llm_session_armed.last_called = Utc::now();
 
-        let (sender, receiver):(mpsc::Sender<LLMEvent>, mpsc::Receiver<LLMEvent>) = mpsc::channel(100);
 
         println!("Attempting to infer");
         // Call the llm
@@ -264,7 +263,7 @@ impl LLMInternalWrapper for LLMrsConnector {
 
                     let event = LLMEvent{
                         stream_id: item_id.clone(),
-                        timestamp: new_item.updated_timestamp.clone(),
+                        timestamp: Utc::now(),
                         call_timestamp: new_item.call_timestamp.clone(),
                         parameters: new_item.parameters.clone(),
                         input: prompt.clone(),
@@ -289,7 +288,7 @@ impl LLMInternalWrapper for LLMrsConnector {
         ).map_err(|err| format!("failure to infer with {:?}", err))?;
 
         println!("Sending back receiver");
-        Ok(receiver)
+        Ok(())
     }
 
     async fn load_llm(self: &mut Self) -> Result<(), String> {
