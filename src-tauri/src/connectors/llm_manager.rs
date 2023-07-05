@@ -1,15 +1,16 @@
-use crate::{connectors, error::PantryError};
-use serde_json::Value;
-use uuid::Uuid;
-use crate::connectors::{SysEvent};
-use tiny_tokio_actor::*;
-use std::{collections::HashMap, path::PathBuf};
 use crate::connectors::llm_actor::LLMActor;
+use crate::connectors::SysEvent;
+use crate::state;
+use crate::{connectors, error::PantryError};
+use dashmap::DashMap;
+use serde_json::Value;
 use std::rc::Rc;
+use std::sync::{Arc, RwLock};
+use std::{collections::HashMap, path::PathBuf};
+use tiny_tokio_actor::*;
+use uuid::Uuid;
 
 // Define some general bookkeeping for the actor framework
-
-
 
 // Special actor that manages LLMActors
 // This moves us out of the tauri state events thread, and into
@@ -22,7 +23,6 @@ pub struct LLMManagerActor {
 
 impl Actor<SysEvent> for LLMManagerActor {}
 
-
 // (llm_id, create_thread, config)
 
 #[derive(Clone, Debug)]
@@ -30,7 +30,6 @@ pub struct PingMessage();
 impl Message for PingMessage {
     type Response = Result<Vec<String>, PantryError>;
 }
-
 
 //#[derive(Clone, Debug)]
 //pub struct GetLLMActorMessage(pub String);
@@ -49,6 +48,7 @@ pub struct CreateLLMActorMessage {
     pub config: HashMap<String, Value>,
     pub data_path: PathBuf,
     pub model_path: Option<PathBuf>,
+    pub user_settings: state::UserSettings,
 }
 // id, connector type, config[]
 
@@ -58,11 +58,22 @@ impl Message for CreateLLMActorMessage {
 
 #[async_trait]
 impl Handler<SysEvent, CreateLLMActorMessage> for LLMManagerActor {
-    async fn handle(&mut self, msg: CreateLLMActorMessage, ctx: &mut ActorContext<SysEvent>) -> Result<ActorRef<SysEvent, LLMActor>, PantryError> {
+    async fn handle(
+        &mut self,
+        msg: CreateLLMActorMessage,
+        ctx: &mut ActorContext<SysEvent>,
+    ) -> Result<ActorRef<SysEvent, LLMActor>, PantryError> {
         println!("Running createllmactor handler");
 
         let conn: connectors::LLMConnectorType = msg.connector.clone();
-        let connection = connectors::get_new_llm_connector(conn.clone(), msg.uuid.clone(), msg.data_path.clone(), msg.config.clone(), msg.model_path.clone());
+        let connection = connectors::get_new_llm_connector(
+            conn.clone(),
+            msg.uuid.clone(),
+            msg.data_path.clone(),
+            msg.config.clone(),
+            msg.model_path.clone(),
+            msg.user_settings.clone(),
+        );
         let llm_act = LLMActor {
             loaded: false, //LLM actors need to have init called on them
             uuid: msg.uuid.clone(),
@@ -72,15 +83,18 @@ impl Handler<SysEvent, CreateLLMActorMessage> for LLMManagerActor {
             data_path: msg.data_path.clone(),
         };
 
-        match ctx.get_or_create_child(&msg.uuid.to_string(), || llm_act).await {
+        match ctx
+            .get_or_create_child(&msg.uuid.to_string(), || llm_act)
+            .await
+        {
             Ok(act_ref) => {
                 println!("Created child");
-                self.active_llm_actors.insert(msg.uuid.clone(), act_ref.clone());
+                self.active_llm_actors
+                    .insert(msg.uuid.clone(), act_ref.clone());
                 Ok(act_ref)
             }
-            Err(act_er) => Err(PantryError::ActorFailure(act_er))
+            Err(act_er) => Err(PantryError::ActorFailure(act_er)),
         }
-
     }
 }
 
@@ -95,7 +109,6 @@ impl Handler<SysEvent, CreateLLMActorMessage> for LLMManagerActor {
 //     }
 // }
 
-
 // Message to unload an existing LLMActor
 #[derive(Clone, Debug)]
 pub struct UnloadLLMActorMessage {
@@ -108,7 +121,11 @@ impl Message for UnloadLLMActorMessage {
 
 #[async_trait]
 impl Handler<SysEvent, UnloadLLMActorMessage> for LLMManagerActor {
-    async fn handle(&mut self, msg: UnloadLLMActorMessage, ctx: &mut ActorContext<SysEvent>) -> Result<(), PantryError> {
+    async fn handle(
+        &mut self,
+        msg: UnloadLLMActorMessage,
+        ctx: &mut ActorContext<SysEvent>,
+    ) -> Result<(), PantryError> {
         println!("Running unloadLLM handler");
 
         if let Some(actor) = self.active_llm_actors.remove(&msg.uuid) {
@@ -120,17 +137,17 @@ impl Handler<SysEvent, UnloadLLMActorMessage> for LLMManagerActor {
     }
 }
 
-
-
-
 #[async_trait]
 impl Handler<SysEvent, PingMessage> for LLMManagerActor {
-    async fn handle(&mut self, msg: PingMessage, _ctx: &mut ActorContext<SysEvent>) -> Result<Vec<String>, PantryError>{
-        let mut ve:Vec<String> = Vec::new();
+    async fn handle(
+        &mut self,
+        msg: PingMessage,
+        _ctx: &mut ActorContext<SysEvent>,
+    ) -> Result<Vec<String>, PantryError> {
+        let mut ve: Vec<String> = Vec::new();
         for (key, val) in self.active_llm_actors.clone().into_iter() {
             ve.push(format!("{} with path {:?}", key.clone(), val));
         }
         Ok(ve)
     }
 }
-

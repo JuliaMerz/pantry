@@ -1,18 +1,19 @@
-use crate::connectors::{LLMInternalWrapper, LLMEvent, LLMEventInternal};
-use chrono::{DateTime, Utc};
-use crate::llm::{LLMSession, LLMHistoryItem};
-use dashmap::DashMap;
-use uuid::Uuid;
-use std::{fs::File, error::Error};
+use crate::connectors::{LLMEvent, LLMEventInternal, LLMInternalWrapper};
+use crate::llm::{LLMHistoryItem, LLMSession};
+use crate::state;
 use crate::user::User;
-use tiny_tokio_actor::*;
-use std::path::PathBuf;
-use tokio::sync::mpsc;
+use chrono::{DateTime, Utc};
+use dashmap::DashMap;
 use serde_json::Value;
 use std::collections::HashMap;
-use llm::{VocabularySource, InferenceSession};
+use std::path::PathBuf;
+use std::{error::Error, fs::File};
+use tiny_tokio_actor::*;
+use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
+use uuid::Uuid;
 // use llm::llm_base::InferenceSnapshotRef;
-use std::sync::{Arc, RwLock, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 
 //src/connectors/llmrs.rs
 
@@ -27,11 +28,11 @@ use std::sync::{Arc, RwLock, Mutex};
 // Parameters (per session)
 // OPTIONAL PARAMETERS
 //     pub top_k: usize,
-    // top_p: f32,
-    // repeat_penalty: f32,
-    // temperature: f32,
-    // bias_tokens: TokenBias,
-    // repetition_penalty_last_n: usize,
+// top_p: f32,
+// repeat_penalty: f32,
+// temperature: f32,
+// bias_tokens: TokenBias,
+// repetition_penalty_last_n: usize,
 //
 pub struct LLMrsConnector {
     pub config: HashMap<String, Value>,
@@ -39,11 +40,18 @@ pub struct LLMrsConnector {
     model: RwLock<Option<Box<dyn llm::Model>>>,
     sessions: DashMap<Uuid, LLMrsSession>,
     data_path: PathBuf,
-    uuid: Uuid
+    uuid: Uuid,
+    user_settings: state::UserSettings,
 }
 
 impl LLMrsConnector {
-    pub fn new(uuid: Uuid, data_path: PathBuf, config: HashMap<String, Value>, model_path: PathBuf) -> LLMrsConnector {
+    pub fn new(
+        uuid: Uuid,
+        data_path: PathBuf,
+        config: HashMap<String, Value>,
+        model_path: PathBuf,
+        user_settings: state::UserSettings,
+    ) -> LLMrsConnector {
         let mut path = data_path.clone();
         path.push(format!("llmrs-{}", uuid.to_string()));
         let mut conn = LLMrsConnector {
@@ -53,6 +61,7 @@ impl LLMrsConnector {
             model_path: model_path,
             model: RwLock::new(None),
             sessions: DashMap::new(),
+            user_settings: user_settings,
         };
         conn.deserialize_sessions();
         conn
@@ -62,7 +71,7 @@ impl LLMrsConnector {
     // Utility functions to serialize and deserialize sessions
     pub fn serialize_sessions(&self) -> Result<(), Box<dyn std::error::Error>> {
         return Ok(()); //We skip serializing because inferencesessionref is missing in llmrs.
-        // let mut file = File::create(&self.data_path)?;
+                       // let mut file = File::create(&self.data_path)?;
 
         // let vec: Vec<LLMrsSessionSerial> = self.sessions.into_iter().map(|sess| {
         //     let sess_guard = sess.1.lock().unwrap();
@@ -133,17 +142,29 @@ impl LLMInternalWrapper for LLMrsConnector {
     //     }
     // }
     async fn get_sessions(self: &Self, user: User) -> Result<Vec<LLMSession>, String> {
-
-        let sesss: Vec<LLMSession> = self.sessions.iter().filter(|ff| ff.value().llm_session.read().unwrap().user_id == user.id).map(|ff| ff.value().llm_session.as_ref().read().unwrap().clone()).collect();
+        let sesss: Vec<LLMSession> = self
+            .sessions
+            .iter()
+            .filter(|ff| ff.value().llm_session.read().unwrap().user_id == user.id)
+            .map(|ff| ff.value().llm_session.as_ref().read().unwrap().clone())
+            .collect();
         return Ok(sesss);
     }
 
-    async fn create_session(self: &mut Self, params: HashMap<String, Value>, user: User) -> Result<Uuid, String> {
-
-
-        let mut model_read = self.model.write().map_err(|err|format!("probably rwgard: {:?}", err))?;
+    async fn create_session(
+        self: &mut Self,
+        params: HashMap<String, Value>,
+        user: User,
+    ) -> Result<Uuid, String> {
+        let mut model_read = self
+            .model
+            .write()
+            .map_err(|err| format!("probably rwgard: {:?}", err))?;
         //TODO: User settings for implementing gpu accel
-        let inference = model_read.as_mut().expect("model missing").start_session(Default::default());
+        let inference = model_read
+            .as_mut()
+            .expect("model missing")
+            .start_session(Default::default());
         let uuid = Uuid::new_v4();
 
         let new_session = LLMrsSession {
@@ -152,22 +173,27 @@ impl LLMInternalWrapper for LLMrsConnector {
                 id: uuid,
                 started: Utc::now(),
                 last_called: Utc::now(),
-                user_id: user.id, // replace with actual user_id
+                user_id: user.id,            // replace with actual user_id
                 llm_uuid: self.uuid.clone(), // replace with actual llm_uuid
                 session_parameters: params,
                 items: vec![],
-            }))
+            })),
         };
 
         self.sessions.insert(uuid, new_session);
 
-
         Ok(uuid)
-
     } //uuid
 
-    async fn prompt_session(self: &mut Self, session_id: Uuid, prompt: String, params: HashMap<String, Value>, user: User, sender: mpsc::Sender<LLMEvent>) -> Result<(), String> {
-
+    async fn prompt_session(
+        self: &mut Self,
+        session_id: Uuid,
+        prompt: String,
+        params: HashMap<String, Value>,
+        user: User,
+        sender: mpsc::Sender<LLMEvent>,
+        cancellation: CancellationToken,
+    ) -> Result<(), String> {
         // The infer function is blocking, and once we start we can't move to another thread
         // which means we need to move to another thread NOW and return our sender.
         //
@@ -212,15 +238,21 @@ impl LLMInternalWrapper for LLMrsConnector {
         }
 
         let inf_params = llm::InferenceParameters {
-            n_threads: 8,
-            n_batch: 8,
+            n_threads: self.user_settings.n_thread,
+            n_batch: self.user_settings.n_batch,
             sampler: Arc::new(sampler),
         };
         let session_wrapped = self.sessions.get(&session_id).ok_or("session not found")?;
-        let mut model_armed = session_wrapped.model_session.as_ref().lock()
+        let mut model_armed = session_wrapped
+            .model_session
+            .as_ref()
+            .lock()
             .map_err(|err| format!("failed to acquire lock: {:?}", err))?;
 
-        let mut llm_session_armed = session_wrapped.llm_session.as_ref().write()
+        let mut llm_session_armed = session_wrapped
+            .llm_session
+            .as_ref()
+            .write()
             .map_err(|err| format!("failed to acquire lock: {:?}", err))?;
 
         // Do our own bookkeeping before calling the LLM.
@@ -238,91 +270,142 @@ impl LLMInternalWrapper for LLMrsConnector {
         llm_session_armed.items.push(new_item.clone());
         llm_session_armed.last_called = Utc::now();
 
-
         println!("Attempting to infer");
         // Call the llm
-        model_armed.infer::<mpsc::error::SendError<LLMEvent>>(
-            self.model.read().map_err(|err|format!("failed to get read lock on model {:?}", err))?
-                .as_ref().expect("Model is not available (opt is None)").as_ref(),
-            &mut rand::thread_rng(),
-            &llm::InferenceRequest {
-                prompt: (&prompt).into(),
-                parameters: &llm::InferenceParameters::default(),
-                play_back_previous_tokens: false,
-                maximum_token_count: None,
-            },
-            // OutputRequest
-            &mut Default::default(),
-            |r| match r {
-                llm::InferenceResponse::PromptToken(t) | llm::InferenceResponse::InferredToken(t) => {
-                    print!("{t}");
+        model_armed
+            .infer::<mpsc::error::SendError<LLMEvent>>(
+                self.model
+                    .read()
+                    .map_err(|err| format!("failed to get read lock on model {:?}", err))?
+                    .as_ref()
+                    .expect("Model is not available (opt is None)")
+                    .as_ref(),
+                &mut rand::thread_rng(),
+                &llm::InferenceRequest {
+                    prompt: (&prompt).into(),
+                    parameters: &llm::InferenceParameters::default(),
+                    play_back_previous_tokens: false,
+                    maximum_token_count: None,
+                },
+                // OutputRequest
+                &mut Default::default(),
+                |r| match r {
+                    llm::InferenceResponse::InferredToken(t) => {
+                        print!("{t}");
 
-                    let session_clone = llm_session_armed.clone();
+                        let session_clone = llm_session_armed.clone();
 
-                    let update_item = llm_session_armed.items.iter_mut().find(|item| item.id == item_id).ok_or("couldn't find session we just made").unwrap();
+                        let update_item = llm_session_armed
+                            .items
+                            .iter_mut()
+                            .find(|item| item.id == item_id)
+                            .ok_or("couldn't find session we just made")
+                            .unwrap();
 
-                    let event = LLMEvent{
-                        stream_id: item_id.clone(),
-                        timestamp: Utc::now(),
-                        call_timestamp: new_item.call_timestamp.clone(),
-                        parameters: new_item.parameters.clone(),
-                        input: prompt.clone(),
-                        llm_uuid: self.uuid.clone(),
-                        session: session_clone,
-                        event:LLMEventInternal::PromptProgress { previous: update_item.output.clone().into(), next: t.clone() }
-                    };
+                        let event = LLMEvent {
+                            stream_id: item_id.clone(),
+                            timestamp: Utc::now(),
+                            call_timestamp: new_item.call_timestamp.clone(),
+                            parameters: new_item.parameters.clone(),
+                            input: prompt.clone(),
+                            llm_uuid: self.uuid.clone(),
+                            session: session_clone,
+                            event: LLMEventInternal::PromptProgress {
+                                previous: update_item.output.clone().into(),
+                                next: t.clone(),
+                            },
+                        };
 
-                    let send_clone = sender.clone();
-                    tokio::task::spawn( async move {
-                        let print_clone = event.event.clone();
-                        send_clone.send(event).await;
-                        println!("Sent an event from llmrs for {:?}", print_clone);
-                    });
+                        let send_clone = sender.clone();
+                        let event_clone = event.clone();
+                        tokio::task::spawn(async move {
+                            let print_clone = event_clone.event.clone();
+                            send_clone.send(event_clone).await;
+                            println!("Sent an event from llmrs for {:?}", print_clone);
+                        });
 
-                    update_item.output.push_str(&t);
-                    Ok(llm::InferenceFeedback::Continue)
+                        // TODO: send a prompt complete here
+                        update_item.output.push_str(&t);
+                        if cancellation.is_cancelled() {
+                            println!("SENT CONCLUSION");
+                            update_item.complete = true;
+                            let mut event_clone = event.clone();
+                            event_clone.event = LLMEventInternal::PromptCompletion {
+                                previous: update_item.output.clone().into(),
+                            };
+                            event_clone.timestamp = Utc::now();
 
-                }
-                _ => Ok(llm::InferenceFeedback::Continue),
-            },
-        ).map_err(|err| format!("failure to infer with {:?}", err))?;
+                            let send_clone = sender.clone();
+                            // we need to grab a new clone that includes the updated session
+                            event_clone.session = llm_session_armed.clone();
+                            tokio::task::spawn(async move {
+                                let print_clone = event_clone.event.clone();
+                                send_clone.send(event_clone).await;
+                                println!("Sent an event from llmrs for {:?}", print_clone);
+                            });
+                        }
+                        match cancellation.is_cancelled() {
+                            true => Ok(llm::InferenceFeedback::Halt),
+                            false => Ok(llm::InferenceFeedback::Continue),
+                        }
+                    }
+                    _ => match cancellation.is_cancelled() {
+                        true => Ok(llm::InferenceFeedback::Halt),
+                        false => Ok(llm::InferenceFeedback::Continue),
+                    },
+                },
+            )
+            .map_err(|err| format!("failure to infer with {:?}", err))?;
 
         println!("Sending back receiver");
         Ok(())
     }
 
     async fn load_llm(self: &mut Self) -> Result<(), String> {
-        let vocab_source: llm::VocabularySource = match (self.config.get("vocabulary_path"), self.config.get("vocabulary_repository")) {
+        let vocab_source: llm::TokenizerSource = match (
+            self.config.get("vocabulary_path"),
+            self.config.get("vocabulary_repository"),
+        ) {
             (Some(_), Some(_)) => {
                 panic!("Cannot specify both --vocabulary-path and --vocabulary-repository");
             }
-            (Some(path), None) => llm::VocabularySource::HuggingFaceTokenizerFile(PathBuf::from(path.to_string())),
-            (None, Some(repo)) => llm::VocabularySource::HuggingFaceRemote(repo.to_string()),
-            (None, None) => llm::VocabularySource::Model,
+            (Some(path), None) => {
+                llm::TokenizerSource::HuggingFaceTokenizerFile(PathBuf::from(path.to_string()))
+            }
+            (None, Some(repo)) => llm::TokenizerSource::HuggingFaceRemote(repo.to_string()),
+            (None, None) => llm::TokenizerSource::Embedded,
         };
 
         let now = std::time::Instant::now();
-        let model_architecture = self.config.get("model_architecture")
+
+        //llm.rs now supports infering model architecture, but we won't support it.
+        let model_architecture: llm::ModelArchitecture = self
+            .config
+            .get("model_architecture")
             .ok_or("missing model architecture")?
             .to_string()
             .parse()
-            .map_err(|err| {format!("unsupported model architecture")})?;
+            .map_err(|err| format!("unsupported model architecture"))?;
+
+        let mut model_params: llm::ModelParameters = Default::default();
+        model_params.use_gpu = self.user_settings.use_gpu;
 
         let mut writer = self.model.write().unwrap();
-        *writer = Some(llm::load_dynamic(
-            model_architecture,
-            &self.model_path,
-            vocab_source,
-            Default::default(),
-            llm::load_progress_callback_stdout,
-        ).map_err(|err| "fuckup loading")?);
-
+        *writer = Some(
+            llm::load_dynamic(
+                Some(model_architecture),
+                &self.model_path,
+                vocab_source,
+                model_params,
+                llm::load_progress_callback_stdout,
+            )
+            .map_err(|err| "fuckup loading")?,
+        );
 
         Ok(())
     }
 
-    async fn unload_llm(self: &Self, ) -> Result<(), String> {
+    async fn unload_llm(self: &Self) -> Result<(), String> {
         todo!()
-
-    }//called by shutdown
+    } //called by shutdown
 }

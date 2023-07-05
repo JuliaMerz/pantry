@@ -1,16 +1,19 @@
-
+use base64::{
+    alphabet,
+    engine::{self, general_purpose},
+    Engine as _,
+};
 use rand::Rng;
-use uuid::Uuid;
-use uuid::uuid;
 use std::collections::HashMap;
-use base64::{Engine as _, engine::{self, general_purpose}, alphabet};
+use uuid::uuid;
+use uuid::Uuid;
 const CUSTOM_ENGINE: engine::GeneralPurpose =
     engine::GeneralPurpose::new(&alphabet::URL_SAFE, general_purpose::NO_PAD);
-
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Permissions {
     roles: HashMap<String, bool>,
+    // superuser: bool,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -40,15 +43,13 @@ fn generate_api_key() -> String {
     CUSTOM_ENGINE.encode(&key)
 }
 
-
-pub fn get_local_user () -> User {
+pub fn get_local_user() -> User {
     User {
         id: uuid!("00000000-0000-0000-0000-000000000000"),
         name: "local".into(),
         api_key: "local".into(), //This isn't important because local calls skip the user auth layer
         permissions: Permissions {
             roles: HashMap::from([("super".into(), true)]),
-        }
-
+        },
     }
 }

@@ -1,19 +1,20 @@
-use crate::{registry::LLMRegistryEntryConnector, llm::LLMSession, user};
+use crate::state;
+use crate::{llm::LLMSession, registry::LLMRegistryEntryConnector, user};
 use chrono::prelude::*;
 use serde_json::Value;
-use uuid::Uuid;
-use std::{collections::HashMap, path::PathBuf};
 use std::fmt;
+use std::sync::{Arc, RwLock};
+use std::{collections::HashMap, path::PathBuf};
 use tiny_tokio_actor::*;
 use tokio::sync::mpsc;
-use std::sync::{Arc, RwLock};
-
+use tokio_util::sync::CancellationToken;
+use uuid::Uuid;
 
 use crate::error::PantryError;
 
 pub mod factory;
-pub mod llm_manager;
 pub mod llm_actor;
+pub mod llm_manager;
 
 pub mod generic;
 pub mod llmrs;
@@ -44,13 +45,34 @@ impl fmt::Display for LLMConnectorType {
     }
 }
 
-
-pub fn get_new_llm_connector(connector_type: LLMConnectorType, uuid: Uuid, data_path: PathBuf, config: HashMap<String, Value>, model_path: Option<PathBuf>) -> Box<dyn LLMInternalWrapper> {
-
+pub fn get_new_llm_connector(
+    connector_type: LLMConnectorType,
+    uuid: Uuid,
+    data_path: PathBuf,
+    config: HashMap<String, Value>,
+    model_path: Option<PathBuf>,
+    user_settings: state::UserSettings,
+) -> Box<dyn LLMInternalWrapper> {
     match connector_type {
-        LLMConnectorType::GenericAPI => Box::new(generic::GenericAPIConnector::new(uuid, data_path, config)),
-        LLMConnectorType::OpenAI => Box::new(openai::OpenAIConnector::new(uuid, data_path, config)),
-        LLMConnectorType::LLMrs => Box::new(llmrs::LLMrsConnector::new(uuid, data_path, config, model_path.unwrap()))
+        LLMConnectorType::GenericAPI => Box::new(generic::GenericAPIConnector::new(
+            uuid,
+            data_path,
+            config,
+            user_settings,
+        )),
+        LLMConnectorType::OpenAI => Box::new(openai::OpenAIConnector::new(
+            uuid,
+            data_path,
+            config,
+            user_settings,
+        )),
+        LLMConnectorType::LLMrs => Box::new(llmrs::LLMrsConnector::new(
+            uuid,
+            data_path,
+            config,
+            model_path.unwrap(),
+            user_settings,
+        )),
     }
 }
 
@@ -64,7 +86,6 @@ impl From<LLMRegistryEntryConnector> for LLMConnectorType {
             LLMRegistryEntryConnector::OpenAI => LLMConnectorType::OpenAI,
         }
     }
-
 }
 
 /* Actually connect to the LLMs */
@@ -73,33 +94,43 @@ pub trait LLMInternalWrapper: Send + Sync {
     // async fn call_llm(self: &mut Self, msg: String, session_params: HashMap<String, Value>, params: HashMap<String, Value>, user: user::User, sender: mpsc::Sender<LLMEvent>) -> Result<Uuid, String>;
     async fn get_sessions(self: &Self, user: user::User) -> Result<Vec<LLMSession>, String>;
     //mut because we're going to modify our internal session storage
-    async fn create_session(self: &mut Self, params: HashMap<String, Value>, user: user::User) -> Result<Uuid, String>; //uuid
-    //mut because we're going to modify our internal session storage
-    async fn prompt_session(self: &mut Self, session_id: Uuid, msg: String, params: HashMap<String, Value>, user: user::User, sender: mpsc::Sender<LLMEvent>) -> Result<(), String>;
+    async fn create_session(
+        self: &mut Self,
+        params: HashMap<String, Value>,
+        user: user::User,
+    ) -> Result<Uuid, String>; //uuid
+                               //mut because we're going to modify our internal session storage
+    async fn prompt_session(
+        self: &mut Self,
+        session_id: Uuid,
+        msg: String,
+        params: HashMap<String, Value>,
+        user: user::User,
+        sender: mpsc::Sender<LLMEvent>,
+        cancellation: CancellationToken,
+    ) -> Result<(), String>;
 
     async fn load_llm(self: &mut Self) -> Result<(), String>;
-    async fn unload_llm(self: &Self, ) -> Result<(), String>; //called by shutdown
-
+    async fn unload_llm(self: &Self) -> Result<(), String>; //called by shutdown
 }
 
 #[derive(Clone, serde::Serialize, Debug)]
 pub struct LLMEvent {
-      stream_id: Uuid,
-      timestamp: DateTime<Utc>,
-      call_timestamp: DateTime<Utc>,
-      parameters: HashMap<String, Value>,
-      input: String,
-      llm_uuid: Uuid,
-      session: LLMSession,
-      event: LLMEventInternal
+    stream_id: Uuid,
+    timestamp: DateTime<Utc>,
+    call_timestamp: DateTime<Utc>,
+    parameters: HashMap<String, Value>,
+    input: String,
+    llm_uuid: Uuid,
+    session: LLMSession,
+    event: LLMEventInternal,
 }
 
 #[derive(Clone, serde::Serialize, Debug)]
-#[serde(tag="type")]
+#[serde(tag = "type")]
 pub enum LLMEventInternal {
-  PromptProgress{previous: String, next: String}, // Next words of an LLM.
-  PromptCompletion{previous: String}, // Finished the prompt
-  PromptError{message: String},
-  Other,
+    PromptProgress { previous: String, next: String }, // Next words of an LLM.
+    PromptCompletion { previous: String },             // Finished the prompt
+    PromptError { message: String },
+    Other,
 }
-

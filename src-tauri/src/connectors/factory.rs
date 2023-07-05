@@ -1,12 +1,12 @@
-use crate::llm;
-use std::collections::HashMap;
-use serde_json::value::Value;
-use serde_json::json;
 use crate::connectors;
+use crate::llm;
 use chrono::DateTime;
-use uuid::Uuid;
 use chrono::Utc;
+use serde_json::json;
+use serde_json::value::Value;
+use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
+use uuid::Uuid;
 
 pub fn factory_llms() -> Vec<llm::LLM> {
     vec![
@@ -24,8 +24,10 @@ pub fn factory_llms() -> Vec<llm::LLM> {
             url: "".into(),
             homepage: "https://platform.openai.com/docs/introduction".into(),
 
-
-            capabilities: HashMap::from([("TEXT_COMPLETION".into(), 2), ("CONVERSATION".into(), 2)]),
+            capabilities: HashMap::from([
+                ("TEXT_COMPLETION".into(), 2),
+                ("CONVERSATION".into(), 2),
+            ]),
             history: Vec::new(),
             tags: vec!["openai".into()],
 
@@ -35,13 +37,16 @@ pub fn factory_llms() -> Vec<llm::LLM> {
             connector_type: connectors::LLMConnectorType::OpenAI,
             config: HashMap::from([
                 ("endpoint".to_string(), json!("completions")),
-                ("model".to_string(), json!("text-davinci-ada"))]),
-            parameters: HashMap::from([("temperature".into(), json!(0.5)), ("color".into(), json!("red"))]),
+                ("model".to_string(), json!("text-davinci-ada")),
+            ]),
+            parameters: HashMap::from([
+                ("temperature".into(), json!(0.5)),
+                ("color".into(), json!("red")),
+            ]),
             user_parameters: vec!["temperature".into()],
             session_parameters: HashMap::from([]),
             user_session_parameters: vec![],
             model_path: None,
-
         },
         llm::LLM {
             id: "openai_gpt4".to_string(),
@@ -57,7 +62,10 @@ pub fn factory_llms() -> Vec<llm::LLM> {
             url: "".into(),
             homepage: "https://platform.openai.com/docs/introduction".into(),
 
-            capabilities: HashMap::from([("TEXT_COMPLETION".into(), 10), ("CONVERSATION".into(), 10)]),
+            capabilities: HashMap::from([
+                ("TEXT_COMPLETION".into(), 10),
+                ("CONVERSATION".into(), 10),
+            ]),
             tags: vec!["openai".into()],
             history: Vec::new(),
 
@@ -67,7 +75,8 @@ pub fn factory_llms() -> Vec<llm::LLM> {
             connector_type: connectors::LLMConnectorType::OpenAI,
             config: HashMap::from([
                 ("endpoint".to_string(), json!("completions")),
-                ("model".to_string(), json!("text-davinci-ada"))]),
+                ("model".to_string(), json!("text-davinci-ada")),
+            ]),
             session_parameters: HashMap::from([]),
             user_session_parameters: vec![],
             parameters: HashMap::from([]),
@@ -76,4 +85,3 @@ pub fn factory_llms() -> Vec<llm::LLM> {
         },
     ]
 }
-
