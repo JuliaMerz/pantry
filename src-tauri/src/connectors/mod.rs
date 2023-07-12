@@ -1,8 +1,13 @@
 use crate::state;
 use crate::{llm::LLMSession, registry::LLMRegistryEntryConnector, user};
 use chrono::prelude::*;
+use diesel::deserialize::{self, FromSql};
+use diesel::serialize::{self, IsNull, Output, ToSql};
+use diesel::sqlite::{Sqlite, SqliteValue};
+use diesel::*;
 use serde_json::Value;
 use std::fmt;
+use std::io::Write;
 use std::sync::{Arc, RwLock};
 use std::{collections::HashMap, path::PathBuf};
 use tiny_tokio_actor::*;
@@ -28,7 +33,8 @@ pub struct SysEvent(String);
 
 impl SystemEvent for SysEvent {}
 
-#[derive(serde::Serialize, serde::Deserialize, Clone, Copy, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Copy, Debug, FromSqlRow, AsExpression)]
+#[diesel(sql_type = diesel::sql_types::Text)]
 pub enum LLMConnectorType {
     GenericAPI,
     LLMrs,
@@ -45,6 +51,29 @@ impl fmt::Display for LLMConnectorType {
     }
 }
 
+impl FromSql<diesel::sql_types::Text, Sqlite> for LLMConnectorType {
+    fn from_sql(bytes: SqliteValue<'_, '_, '_>) -> diesel::deserialize::Result<Self> {
+        let str = <String as FromSql<diesel::sql_types::Text, Sqlite>>::from_sql(bytes)?;
+        match str.as_str() {
+            "GenericAPI" => Ok(LLMConnectorType::GenericAPI),
+            "LLMrs" => Ok(LLMConnectorType::LLMrs),
+            "OpenAI" => Ok(LLMConnectorType::OpenAI),
+            _ => Err("Unrecognized enum variant".into()),
+        }
+    }
+}
+
+impl ToSql<diesel::sql_types::Text, Sqlite> for LLMConnectorType {
+    fn to_sql<'W>(&'W self, out: &mut Output<'W, '_, Sqlite>) -> serialize::Result {
+        match *self {
+            LLMConnectorType::GenericAPI => out.set_value("GenericAPI"),
+            LLMConnectorType::LLMrs => out.set_value("LLMrs"),
+            LLMConnectorType::OpenAI => out.set_value("OpenAI"),
+        }
+        Ok(serialize::IsNull::No)
+    }
+}
+
 pub fn get_new_llm_connector(
     connector_type: LLMConnectorType,
     uuid: Uuid,
@@ -52,6 +81,7 @@ pub fn get_new_llm_connector(
     config: HashMap<String, Value>,
     model_path: Option<PathBuf>,
     user_settings: state::UserSettings,
+    pool: Pool<ConnectionManager<SqliteConnection>>,
 ) -> Box<dyn LLMInternalWrapper> {
     match connector_type {
         LLMConnectorType::GenericAPI => Box::new(generic::GenericAPIConnector::new(
@@ -59,12 +89,14 @@ pub fn get_new_llm_connector(
             data_path,
             config,
             user_settings,
+            pool,
         )),
         LLMConnectorType::OpenAI => Box::new(openai::OpenAIConnector::new(
             uuid,
             data_path,
             config,
             user_settings,
+            pool,
         )),
         LLMConnectorType::LLMrs => Box::new(llmrs::LLMrsConnector::new(
             uuid,
@@ -72,6 +104,7 @@ pub fn get_new_llm_connector(
             config,
             model_path.unwrap(),
             user_settings,
+            pool,
         )),
     }
 }

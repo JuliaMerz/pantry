@@ -4,14 +4,19 @@ use crate::error::PantryError;
 use crate::frontend::available_llms;
 use crate::llm;
 use crate::registry; //::LLMRegistryEntry;
+use crate::request;
+use crate::user;
 use dashmap::{DashMap, DashSet};
+use diesel::prelude::*;
+use diesel::r2d2::ConnectionManager;
+use diesel::r2d2::Pool;
 use keyring;
 use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 use tiny_tokio_actor::*;
 
 use uuid::Uuid;
@@ -87,6 +92,7 @@ impl<'de> Deserialize<'de> for KeychainEntry {
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 pub struct UserSettings {
     location: PathBuf,
+    pub settings_path: PathBuf,
     pub openai_key: KeychainEntry,
     pub use_gpu: bool,
     pub n_thread: usize,
@@ -115,6 +121,7 @@ impl UserSettings {
         // If the file does not exist or reading/parsing it failed, return a new default object.
         UserSettings {
             location,
+            settings_path: app_location,
             openai_key: KeychainEntry::new("openai").unwrap(), // replace with actual default
             use_gpu: false,
             n_thread: 4,
@@ -161,17 +168,14 @@ impl Deref for GlobalStateWrapper {
     }
 }
 
-impl GlobalStateWrapper {
-    // pub fn read(&self) -> &GlobalState {
-    //     self.state.read()
-    // }
-}
+//TODO: available, registered users, and requests eventually belong in a DB.
 pub struct GlobalState {
     pub user_settings: RwLock<UserSettings>,
     pub manager_addr: ActorRef<connectors::SysEvent, llm_manager::LLMManagerActor>,
     // pub running_llms: DashSet<String>,
     pub activated_llms: DashMap<Uuid, llm::LLMActivated>,
     pub available_llms: DashMap<Uuid, Arc<llm::LLM>>,
+    pub pool: Pool<ConnectionManager<SqliteConnection>>,
 }
 
 /*
@@ -182,15 +186,14 @@ pub fn create_global_state(
     activated_llms: DashMap<Uuid, llm::LLMActivated>,
     available_llms: DashMap<Uuid, Arc<llm::LLM>>,
     settings_path: PathBuf,
+    pool: Pool<ConnectionManager<SqliteConnection>>,
 ) -> GlobalStateWrapper {
     GlobalStateWrapper {
         state: Arc::new(GlobalState {
             manager_addr: addr,
             user_settings: RwLock::new(UserSettings::new(settings_path)), // We initialize user settings after global state
             activated_llms,
-            available_llms,
-            // running_llms: DashMap::new(),
-            // available_llms: DashMap::new(),
+            pool: pool,
         }),
     }
 }

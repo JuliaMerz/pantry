@@ -1,4 +1,5 @@
 use crate::connectors;
+use crate::database_types::*;
 use crate::llm;
 use chrono::DateTime;
 use chrono::Utc;
@@ -19,34 +20,33 @@ pub fn factory_llms() -> Vec<llm::LLM> {
             description: "openAi's Ada model".to_string(),
             downloaded_reason: "Factory Include".to_string(),
             downloaded_date: Utc::now(),
-            last_called: RwLock::new(Option::Some(Utc::now())),
+            last_called: None,
             requirements: "An OpenAI Api Key".into(),
             url: "".into(),
             homepage: "https://platform.openai.com/docs/introduction".into(),
 
-            capabilities: HashMap::from([
+            capabilities: DbHashMapInt(HashMap::from([
                 ("TEXT_COMPLETION".into(), 2),
                 ("CONVERSATION".into(), 2),
-            ]),
-            history: Vec::new(),
-            tags: vec!["openai".into()],
+            ])),
+            tags: DbVec(vec!["openai".into()]),
 
-            uuid: Uuid::new_v4(),
+            uuid: DbUuid(Uuid::new_v4()),
 
-            create_thread: true, //eventually false, true for testing
+            create_thread: false, //eventually false, true for testing
             connector_type: connectors::LLMConnectorType::OpenAI,
-            config: HashMap::from([
+            config: DbHashMap(HashMap::from([
                 ("endpoint".to_string(), json!("completions")),
                 ("model".to_string(), json!("text-davinci-ada")),
-            ]),
-            parameters: HashMap::from([
+            ])),
+            parameters: DbHashMap(HashMap::from([
                 ("temperature".into(), json!(0.5)),
                 ("color".into(), json!("red")),
-            ]),
-            user_parameters: vec!["temperature".into()],
-            session_parameters: HashMap::from([]),
-            user_session_parameters: vec![],
-            model_path: None,
+            ])),
+            user_parameters: DbVec(vec!["temperature".into()]),
+            session_parameters: DbHashMap(HashMap::from([])),
+            user_session_parameters: DbVec(vec![]),
+            model_path: DbOptionPathbuf(None),
         },
         llm::LLM {
             id: "openai_gpt4".to_string(),
@@ -57,31 +57,30 @@ pub fn factory_llms() -> Vec<llm::LLM> {
             description: "openAi's GPT-4 model".to_string(),
             downloaded_reason: "Factory Include".to_string(),
             downloaded_date: Utc::now(),
-            last_called: RwLock::new(Option::Some(Utc::now())),
+            last_called: None,
             requirements: "An OpenAI Api Key".into(),
             url: "".into(),
             homepage: "https://platform.openai.com/docs/introduction".into(),
 
-            capabilities: HashMap::from([
+            capabilities: DbHashMapInt(HashMap::from([
                 ("TEXT_COMPLETION".into(), 10),
                 ("CONVERSATION".into(), 10),
-            ]),
-            tags: vec!["openai".into()],
-            history: Vec::new(),
+            ])),
+            tags: DbVec(vec!["openai".into()]),
 
-            uuid: Uuid::new_v4(),
+            uuid: DbUuid(Uuid::new_v4()),
 
             create_thread: true, //eventually false, true for testing
             connector_type: connectors::LLMConnectorType::OpenAI,
-            config: HashMap::from([
+            config: DbHashMap(HashMap::from([
                 ("endpoint".to_string(), json!("completions")),
                 ("model".to_string(), json!("text-davinci-ada")),
-            ]),
-            session_parameters: HashMap::from([]),
-            user_session_parameters: vec![],
-            parameters: HashMap::from([]),
-            user_parameters: vec![],
-            model_path: None,
+            ])),
+            session_parameters: DbHashMap(HashMap::from([])),
+            user_session_parameters: DbVec(vec![]),
+            parameters: DbHashMap(HashMap::from([])),
+            user_parameters: DbVec(vec![]),
+            model_path: DbOptionPathbuf(None),
         },
     ]
 }

@@ -1,4 +1,5 @@
 use crate::connectors::{LLMEvent, LLMEventInternal, LLMInternalWrapper};
+use crate::database_types::*;
 use crate::llm::{LLMHistoryItem, LLMSession};
 use crate::state;
 use crate::user::User;
@@ -170,13 +171,13 @@ impl LLMInternalWrapper for LLMrsConnector {
         let new_session = LLMrsSession {
             model_session: Arc::new(Mutex::new(inference)),
             llm_session: Arc::new(RwLock::new(LLMSession {
-                id: uuid,
+                id: DbUuid(uuid),
+                llm_uuid: DbUuid(self.uuid.clone()), // replace with actual llm_uuid
+                user_id: user.id,                    // replace with actual user_id
                 started: Utc::now(),
                 last_called: Utc::now(),
-                user_id: user.id,            // replace with actual user_id
-                llm_uuid: self.uuid.clone(), // replace with actual llm_uuid
-                session_parameters: params,
-                items: vec![],
+                session_parameters: DbHashMap(params),
+                items: DbVec(vec![]),
             })),
         };
 
@@ -258,14 +259,19 @@ impl LLMInternalWrapper for LLMrsConnector {
         // Do our own bookkeeping before calling the LLM.
         let item_id = Uuid::new_v4();
         let new_item = LLMHistoryItem {
-            id: item_id.clone(),
+            id: DbUuid(item_id.clone()),
+            llm_session_id: llm_session_armed.id.clone(),
             updated_timestamp: Utc::now(),
             call_timestamp: Utc::now(),
             complete: false, // initially false, will be set to true once response is received
-            parameters: params.clone(),
+            parameters: DbHashMap(params.clone()),
             input: prompt.clone(),
             output: "".into(),
         };
+
+        diesel::insert_into(schema::llm_history)
+            .values(new_item)
+            .execute(conn);
 
         llm_session_armed.items.push(new_item.clone());
         llm_session_armed.last_called = Utc::now();
@@ -298,7 +304,7 @@ impl LLMInternalWrapper for LLMrsConnector {
                         let update_item = llm_session_armed
                             .items
                             .iter_mut()
-                            .find(|item| item.id == item_id)
+                            .find(|item| item.id.0 == item_id)
                             .ok_or("couldn't find session we just made")
                             .unwrap();
 
@@ -306,7 +312,7 @@ impl LLMInternalWrapper for LLMrsConnector {
                             stream_id: item_id.clone(),
                             timestamp: Utc::now(),
                             call_timestamp: new_item.call_timestamp.clone(),
-                            parameters: new_item.parameters.clone(),
+                            parameters: new_item.parameters.0.clone(),
                             input: prompt.clone(),
                             llm_uuid: self.uuid.clone(),
                             session: session_clone,

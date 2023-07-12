@@ -3,42 +3,78 @@
 use crate::connectors::llm_manager;
 use crate::llm::LLMWrapper;
 use dashmap::DashMap;
+use diesel::prelude::*;
+use diesel::r2d2::ConnectionManager;
+use diesel::r2d2::Pool;
+use diesel::sqlite::Sqlite;
+use diesel::sqlite::SqliteConnection;
+use dotenvy::dotenv;
 use frontend::available_llms;
+use serde::Serialize;
 use std::collections::HashMap;
+use std::env;
+use std::error::Error;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread;
 use std::time;
-use tiny_tokio_actor::*;
-use tokio;
-use uuid::Uuid;
-
-use tauri::api::path::app_data_dir;
-
 use tauri::{
     window::WindowBuilder, CustomMenuItem, Manager, RunEvent, SystemTray, SystemTrayEvent,
     SystemTrayMenu, WindowEvent, WindowUrl, Wry,
 };
-
-use serde::Serialize;
-use std::path::PathBuf;
 use tauri_plugin_store::with_store;
 use tauri_plugin_store::StoreCollection;
+use tiny_tokio_actor::*;
+use tokio;
+use uuid::Uuid;
+
+use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
+use tauri::api::path::app_data_dir;
+pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations");
 
 mod connectors;
+mod database;
+mod database_types;
 mod emitter;
 mod error;
 mod frontend;
 mod listeners;
 mod llm;
 mod registry;
+mod request;
+mod schema;
 mod server;
 mod state;
 mod user;
 
-// Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
-#[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
+pub fn get_connection_pool() -> Pool<ConnectionManager<SqliteConnection>> {
+    // let url = database_url_for_env();
+    dotenv().ok();
+
+    let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+    let manager = ConnectionManager::<SqliteConnection>::new(database_url);
+    // Refer to the `r2d2` documentation for more methods to use
+    // when building a connection pool
+    Pool::builder()
+        .test_on_check_out(true)
+        .build(manager)
+        .expect("Could not build connection pool")
+}
+
+// pub fn establish_connection() -> SqliteConnection {
+//     SqliteConnection::establish(&database_url)
+//         .unwrap_or_else(|_| panic!("Error connecting to {}", database_url))
+// }
+fn run_migrations(
+    connection: &mut impl MigrationHarness<Sqlite>,
+) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
+    // This will run the necessary migrations.
+    //
+    // See the documentation for `MigrationHarness` for
+    // all available methods.
+    connection.run_pending_migrations(MIGRATIONS)?;
+
+    Ok(())
 }
 
 #[tokio::main]
@@ -50,6 +86,8 @@ async fn main() {
     let bus = EventBus::<connectors::SysEvent>::new(1000);
 
     let system = ActorSystem::new("pantry", bus);
+
+    let mut pool = get_connection_pool();
 
     let man_act = connectors::llm_manager::LLMManagerActor {
         active_llm_actors: HashMap::new(),
@@ -117,14 +155,22 @@ async fn main() {
             Ok(llms) => {
                 println!("Found llm_available.dat, loading");
                 llms.into_iter()
-                    .map(|val| state.available_llms.insert(val.uuid.clone(), Arc::new(val)))
+                    .map(|val| {
+                        state
+                            .available_llms
+                            .insert(val.uuid.0.clone(), Arc::new(val))
+                    })
                     .for_each(drop);
             }
             Err(err) => {
                 println!("Error finding llm, using factory. Err: {:?}", err);
                 connectors::factory::factory_llms()
                     .into_iter()
-                    .map(|val| state.available_llms.insert(val.uuid.clone(), Arc::new(val)))
+                    .map(|val| {
+                        state
+                            .available_llms
+                            .insert(val.uuid.0.clone(), Arc::new(val))
+                    })
                     .for_each(drop);
 
                 // mostly test
@@ -203,6 +249,7 @@ async fn main() {
             DashMap::new(),
             DashMap::new(),
             tauri::api::path::app_local_data_dir(context.config()).unwrap(),
+            pool,
         ))
         .invoke_handler(tauri::generate_handler![
             frontend::get_requests,
@@ -220,7 +267,10 @@ async fn main() {
             frontend::set_user_setting,
             frontend::get_user_settings,
             frontend::interrupt_session,
-        ])
-        .run(context)
+        ]);
+
+    // build_server()
+
+    app.run(context)
         .expect("error while running tauri application");
 }

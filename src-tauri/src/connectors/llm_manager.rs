@@ -49,6 +49,7 @@ pub struct CreateLLMActorMessage {
     pub data_path: PathBuf,
     pub model_path: Option<PathBuf>,
     pub user_settings: state::UserSettings,
+    pub pool: Pool<ConnectionManager<SqliteConnection>>,
 }
 // id, connector type, config[]
 
@@ -73,6 +74,7 @@ impl Handler<SysEvent, CreateLLMActorMessage> for LLMManagerActor {
             msg.config.clone(),
             msg.model_path.clone(),
             msg.user_settings.clone(),
+            msg.pool.clone(),
         );
         let llm_act = LLMActor {
             loaded: false, //LLM actors need to have init called on them

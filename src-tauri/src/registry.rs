@@ -2,26 +2,27 @@ use std::collections::HashMap;
 use std::io::prelude::*;
 use std::sync::{Arc, RwLock};
 
-use futures_util::StreamExt;
-use serde_json::Value;
-use tauri::{AppHandle, Wry, Manager};
-use std::str::FromStr;
-use std::fs::File;
-use uuid::Uuid;
-use tokio::sync::mpsc;
+use crate::database_types::*;
 use crate::emitter;
 use crate::llm;
 use crate::state;
+use futures_util::StreamExt;
+use serde_json::Value;
+use std::fs::File;
+use std::str::FromStr;
+use tauri::{AppHandle, Manager, Wry};
+use tokio::sync::mpsc;
+use uuid::Uuid;
 
 // connectors/registry.rs
 
 #[derive(Debug, PartialEq, serde::Serialize, serde::Deserialize, Clone)]
-#[serde(rename_all="lowercase")]
+#[serde(rename_all = "lowercase")]
 pub enum LLMRegistryEntryConnector {
     Ggml,
     LLMrs,
     OpenAI,
-    GenericAPI
+    GenericAPI,
 }
 
 impl FromStr for LLMRegistryEntryConnector {
@@ -29,11 +30,11 @@ impl FromStr for LLMRegistryEntryConnector {
 
     fn from_str(input: &str) -> Result<LLMRegistryEntryConnector, Self::Err> {
         match input {
-            "ggml"  => Ok(LLMRegistryEntryConnector::Ggml),
-            "llmrs"  => Ok(LLMRegistryEntryConnector::LLMrs),
+            "ggml" => Ok(LLMRegistryEntryConnector::Ggml),
+            "llmrs" => Ok(LLMRegistryEntryConnector::LLMrs),
             "api" => Ok(LLMRegistryEntryConnector::GenericAPI),
             "openai" => Ok(LLMRegistryEntryConnector::OpenAI),
-            _       => Err(()),
+            _ => Err(()),
         }
     }
 }
@@ -48,15 +49,14 @@ impl FromStr for LLMRegistryEntryInstallStep {
 
     fn from_str(input: &str) -> Result<LLMRegistryEntryInstallStep, Self::Err> {
         match input {
-            "download"  => Ok(LLMRegistryEntryInstallStep::Download),
-            _         => Err(()),
+            "download" => Ok(LLMRegistryEntryInstallStep::Download),
+            _ => Err(()),
         }
     }
 }
 
-
 //We don't store these locally.
-#[derive(Debug, serde::Deserialize, Clone)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
 pub struct LLMRegistryEntry {
     pub id: String,
     pub family_id: String,
@@ -85,7 +85,6 @@ pub struct LLMRegistryEntry {
     pub user_session_parameters: Vec<String>,
 }
 
-
 pub async fn download_and_write_llm(
     llm_reg: LLMRegistryEntry,
     uuid: Uuid,
@@ -94,7 +93,10 @@ pub async fn download_and_write_llm(
     // Create the request client.
     let client = reqwest::Client::new();
 
-    let mut path = app.path_resolver().app_local_data_dir().ok_or(format!("failed to find local data"))?;
+    let mut path = app
+        .path_resolver()
+        .app_local_data_dir()
+        .ok_or(format!("failed to find local data"))?;
     path.push(format!("{}-{}", llm_reg.id, uuid.to_string()));
 
     // Create the file to write into.
@@ -112,7 +114,6 @@ pub async fn download_and_write_llm(
 
     let stream_id = format!("{}-{}", llm_reg.id, uuid.to_string());
 
-
     //TODO: download progress for specific downloads
     let mut update_counter = 0;
     while let Some(item) = stream.next().await {
@@ -128,60 +129,65 @@ pub async fn download_and_write_llm(
         if let Some(total_size) = total_size_opt {
             let percent = (downloaded as f32 / total_size as f32) * 100.0;
             println!("Downloading {} at {}", llm_reg.id, percent);
-            app.emit_all("downloads", emitter::EventPayload {
-                stream_id: stream_id.clone(),
-                event: emitter::EventType::DownloadProgress{
-                    progress: percent.to_string()
-                }
-            })?;
+            app.emit_all(
+                "downloads",
+                emitter::EventPayload {
+                    stream_id: stream_id.clone(),
+                    event: emitter::EventType::DownloadProgress {
+                        progress: percent.to_string(),
+                    },
+                },
+            )?;
         } else {
             println!("Downloading {} at {}", llm_reg.id, downloaded);
             // otherwise, just emit the downloaded amount.
-            app.emit_all("downloads", emitter::EventPayload {
-                stream_id: stream_id.clone(),
-                event: emitter::EventType::DownloadProgress{
-                    progress: downloaded.to_string(),
-                }
-            })?;
+            app.emit_all(
+                "downloads",
+                emitter::EventPayload {
+                    stream_id: stream_id.clone(),
+                    event: emitter::EventType::DownloadProgress {
+                        progress: downloaded.to_string(),
+                    },
+                },
+            )?;
         }
     }
 
+    let state: tauri::State<'_, state::GlobalState> = app.state();
 
-    let state:tauri::State<'_, state::GlobalState> = app.state();
+    let new_llm: llm::LLM = llm::LLM {
+        id: llm_reg.id.clone(),
+        family_id: llm_reg.family_id.clone(),
+        organization: llm_reg.organization.clone(),
+        name: llm_reg.name.clone(),
+        license: llm_reg.license.clone(),
+        description: llm_reg.description.clone(),
+        downloaded_reason: "some kind of user input".into(), //TODO: make this dynamic at some point
+        downloaded_date: chrono::offset::Utc::now(),
+        last_called: None, // clone inner value
+        url: llm_reg.url.clone(),
+        homepage: llm_reg.homepage.clone(),
 
-    let new_llm:llm::LLM = llm::LLM {
-            id: llm_reg.id.clone(),
-            family_id: llm_reg.family_id.clone(),
-            organization: llm_reg.organization.clone(),
-            name: llm_reg.name.clone(),
-            license: llm_reg.license.clone(),
-            description: llm_reg.description.clone(),
-            downloaded_reason: "some kind of user input".into(), //TODO: make this dynamic at some point
-            downloaded_date: chrono::offset::Utc::now(),
-            last_called: RwLock::new(None),  // clone inner value
-            url: llm_reg.url.clone(),
-            homepage: llm_reg.homepage.clone(),
+        uuid: DbUuid(uuid),
 
-            uuid: uuid,
+        capabilities: DbHashMapInt(llm_reg.capabilities.clone()),
+        tags: DbVec(llm_reg.tags.clone()),
 
-            capabilities: llm_reg.capabilities.clone(),
-            tags: llm_reg.tags.clone(),
-            history: Vec::new(),
+        requirements: llm_reg.requirements.clone(),
 
-            requirements: llm_reg.requirements.clone(),
-
-            create_thread: llm_reg.create_thread.clone(),
-            connector_type: llm_reg.connector_type.clone().into(), // assuming this type is also Clone
-            config: llm_reg.config.clone(),
-            parameters: llm_reg.parameters.clone(),
-            user_parameters: llm_reg.user_parameters.clone(),
-            session_parameters: llm_reg.session_parameters.clone(),
-            user_session_parameters: llm_reg.user_session_parameters.clone(),
-            model_path: Some(path.clone()),
-
+        create_thread: llm_reg.create_thread.clone(),
+        connector_type: llm_reg.connector_type.clone().into(), // assuming this type is also Clone
+        config: DbHashMap(llm_reg.config.clone()),
+        parameters: DbHashMap(llm_reg.parameters.clone()),
+        user_parameters: DbVec(llm_reg.user_parameters.clone()),
+        session_parameters: DbHashMap(llm_reg.session_parameters.clone()),
+        user_session_parameters: DbVec(llm_reg.user_session_parameters.clone()),
+        model_path: DbOptionPathbuf(Some(path.clone())),
     };
 
-    state.available_llms.insert(new_llm.uuid.clone(), Arc::new(new_llm));
+    state
+        .available_llms
+        .insert(new_llm.uuid.0.clone(), Arc::new(new_llm));
 
     let path = app.path_resolver().app_local_data_dir();
     match path {
@@ -198,38 +204,47 @@ pub async fn download_and_write_llm(
             match result {
                 Ok(_) => {
                     println!("Successful download, llms serialized");
-                    app.emit_all("downloads", emitter::EventPayload {
-                        stream_id: stream_id.clone(),
-                        event: emitter::EventType::DownloadCompletion{}
-                    })?;
-
+                    app.emit_all(
+                        "downloads",
+                        emitter::EventPayload {
+                            stream_id: stream_id.clone(),
+                            event: emitter::EventType::DownloadCompletion {},
+                        },
+                    )?;
                 }
                 Err(_) => {
-
                     println!("Failed to save download");
-                    app.emit_all("downloads", emitter::EventPayload {
-                        stream_id: stream_id.clone(),
-                        event: emitter::EventType::DownloadError{message:"failed to save llm".into()}
-                    })?;
+                    app.emit_all(
+                        "downloads",
+                        emitter::EventPayload {
+                            stream_id: stream_id.clone(),
+                            event: emitter::EventType::DownloadError {
+                                message: "failed to save llm".into(),
+                            },
+                        },
+                    )?;
                 }
-
             }
-
         }
         None => {
-            app.emit_all("downloads", emitter::EventPayload {
-                stream_id: stream_id.clone(),
-                event: emitter::EventType::DownloadError{message:"failed to save llm".into()}
-            })?;
+            app.emit_all(
+                "downloads",
+                emitter::EventPayload {
+                    stream_id: stream_id.clone(),
+                    event: emitter::EventType::DownloadError {
+                        message: "failed to save llm".into(),
+                    },
+                },
+            )?;
         }
     }
 
-    app.emit_all("downloads", emitter::EventPayload {
-        stream_id: stream_id.clone(),
-        event: emitter::EventType::ChannelClose{}
-    })?;
+    app.emit_all(
+        "downloads",
+        emitter::EventPayload {
+            stream_id: stream_id.clone(),
+            event: emitter::EventType::ChannelClose {},
+        },
+    )?;
     Ok(())
 }
-
-
-

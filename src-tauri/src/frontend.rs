@@ -1,5 +1,6 @@
 use crate::connectors;
 use crate::connectors::llm_manager;
+use crate::database;
 use crate::emitter;
 use crate::llm;
 use crate::llm::LLMWrapper;
@@ -48,7 +49,7 @@ pub struct LLMInfo {
 
     pub url: String,
 
-    pub create_thread: bool,
+    pub create_thread: bool, //TODO: Rename this, it basically means local now
     pub connector_type: String,
     pub config: HashMap<String, Value>, // Connector Configs Parameters
 
@@ -61,7 +62,7 @@ pub struct LLMInfo {
 }
 
 #[derive(serde::Serialize, Debug)]
-pub struct LLMRunning {
+pub struct LLMRunningInfo {
     pub llm_info: LLMInfo,
     pub download_reason: String,
     pub downloaded_date: DateTime<Utc>,
@@ -108,28 +109,28 @@ impl From<&llm::LLM> for LLMInfo {
             organization: value.organization.clone(),
             name: value.name.clone(),
             description: value.description.clone(),
-            parameters: value.parameters.clone(),
-            user_parameters: value.user_parameters.clone(),
-            session_parameters: value.session_parameters.clone(),
-            user_session_parameters: value.user_session_parameters.clone(),
+            parameters: value.parameters.0.clone(),
+            user_parameters: value.user_parameters.0.clone(),
+            session_parameters: value.session_parameters.0.clone(),
+            user_session_parameters: value.user_session_parameters.0.clone(),
 
-            capabilities: value.capabilities.clone(),
+            capabilities: value.capabilities.0.clone(),
             homepage: value.homepage.clone(),
             license: value.license.clone(),
             requirements: value.requirements.clone(),
             url: value.url.clone(),
-            tags: value.tags.clone(),
+            tags: value.tags.0.clone(),
             create_thread: value.create_thread.clone(),
 
             connector_type: value.connector_type.to_string(),
-            config: value.config.clone(),
+            config: value.config.0.clone(),
         }
     }
 }
 
-impl From<&llm::LLMActivated> for LLMRunning {
+impl From<&llm::LLMActivated> for LLMRunningInfo {
     fn from(value: &llm::LLMActivated) -> Self {
-        LLMRunning {
+        LLMRunningInfo {
             llm_info: value.llm.as_ref().into(),
             download_reason: format!(
                 "Downloaded {} for {}",
@@ -137,7 +138,7 @@ impl From<&llm::LLMActivated> for LLMRunning {
                 value.llm.downloaded_reason
             ),
             downloaded_date: value.llm.downloaded_date,
-            last_called: value.llm.last_called.read().unwrap().clone(),
+            last_called: value.llm.last_called.clone(),
             activated: format!(
                 "Activated {} for {}",
                 value.activated_time.format("%b %e %T %Y"),
@@ -150,15 +151,11 @@ impl From<&llm::LLMActivated> for LLMRunning {
 
 impl From<&llm::LLM> for LLMAvailable {
     fn from(value: &llm::LLM) -> Self {
-        let datetime: Option<DateTime<Utc>> = match value.last_called.read() {
-            Ok(value) => value.clone(),
-            Err(_) => None,
-        };
         LLMAvailable {
             llm_info: value.into(),
             uuid: value.uuid.to_string(),
             downloaded: value.downloaded_reason.clone(),
-            last_called: datetime,
+            last_called: value.last_called.clone(),
         }
     }
 }
@@ -202,10 +199,10 @@ pub async fn get_requests(
 #[tauri::command]
 pub async fn active_llms(
     state: tauri::State<'_, state::GlobalStateWrapper>,
-) -> Result<CommandResponse<Vec<LLMRunning>>, String> {
+) -> Result<CommandResponse<Vec<LLMRunningInfo>>, String> {
     let active_llms_iter = state.activated_llms.iter();
     println!("received command active_llms");
-    let mut active_llms: Vec<LLMRunning> = Vec::new();
+    let mut active_llms: Vec<LLMRunningInfo> = Vec::new();
     for pair in active_llms_iter {
         println!("attempting to add an active");
         let llm = pair.value();
@@ -219,14 +216,13 @@ pub async fn available_llms(
     state: tauri::State<'_, state::GlobalStateWrapper>,
 ) -> Result<CommandResponse<Vec<LLMAvailable>>, String> {
     println!("received command available_llms");
-    let available_llms_iter = state.available_llms.iter();
-    let mut available_llms: Vec<LLMAvailable> = Vec::new();
-    for val in available_llms_iter {
-        available_llms.push(val.value().clone().as_ref().into())
-    }
-    println!("responding {:?}", available_llms);
+    let available_llms_iter = database::get_available_llms(state.pool);
+    // let mut available_llms: Vec<LLMAvailable> = Vec::new();
+    // for val in available_llms_iter {
+    //     available_llms.push(val.value().clone().as_ref().into())
+    // }
     Ok(CommandResponse {
-        data: available_llms,
+        data: available_llms_iter.into(),
     })
 }
 
@@ -331,19 +327,17 @@ pub async fn load_llm(
 
     let manager_addr_copy = state.manager_addr.clone();
 
+    let new_llm = database::get_llm(uuid, state.pool)?;
+
     if let Some(new_llm) = state.available_llms.get(&uuid) {
         let path = app
             .path_resolver()
             .app_local_data_dir()
             .ok_or("no path no llms")?;
         let settings = state.user_settings.read().unwrap().clone();
-        let result = llm::LLMActivated::activate_llm(
-            new_llm.value().clone(),
-            manager_addr_copy,
-            path,
-            settings,
-        )
-        .await;
+        let result =
+            llm::LLMActivated::activate_llm(new_llm.clone(), manager_addr_copy, path, settings)
+                .await;
         // new_llm.load();
         match result {
             Ok(running) => {
@@ -392,18 +386,21 @@ pub async fn load_llm(
 pub struct CallLLMResponse {
     pub session_id: String,
     pub parameters: HashMap<String, Value>,
-    pub llm_info: LLMInfo,
+    // I don't think we use this, we don't need it.
+    // pub llm_info: LLMInfo,
 }
 
 // Define the response structure for the prompt_session command.
 #[derive(Debug, serde::Serialize)]
 pub struct PromptSessionResponse {
-    pub llm_info: LLMInfo, // assuming you have defined LLMInfo elsewhere.
+    // I don't think we use this, we don't need it.
+    // pub llm_info: LLMInfo,
 }
 
 #[derive(Debug, serde::Serialize)]
 pub struct CreateSessionResponse {
     pub session_parameters: HashMap<String, Value>,
+    // I don't think we use this, we don't need it.
     pub llm_info: LLMInfo,
     pub session_id: String,
 }
@@ -454,7 +451,7 @@ pub async fn create_session(
                 data: CreateSessionResponse {
                     session_parameters: resp.session_parameters,
                     session_id: resp.session_id.to_string(),
-                    llm_info: llm.llm.as_ref().into(),
+                    // llm_info: llm.llm.as_ref().into(),
                 },
             }),
             Err(err) => Err(err.to_string()),
@@ -506,9 +503,7 @@ pub async fn prompt_session(
                 });
 
                 Ok(CommandResponse {
-                    data: PromptSessionResponse {
-                        llm_info: llm.llm.as_ref().into(),
-                    },
+                    data: PromptSessionResponse {},
                 })
             }
             Err(err) => Err(err.to_string()),
@@ -574,7 +569,7 @@ pub async fn call_llm(
                     data: CallLLMResponse {
                         session_id: llm_resp.session_id.to_string(),
                         parameters: llm_resp.parameters,
-                        llm_info: llm.llm.as_ref().into(),
+                        // llm_info: llm.llm.as_ref().into(),
                     },
                 })
             }
@@ -637,31 +632,9 @@ pub async fn delete_llm(
             })?
             .map_err(|err| format!("Failed to unload: {:?}", err))?;
     }
-    if let Some(llm) = state.available_llms.remove(&uuid) {
-        if let Some(model_path) = llm.1.as_ref().model_path.clone() {
-            if let Err(err) = std::fs::remove_file(&model_path) {
-                return Err(format!("Failed to delete LLM file: {}", err));
-            }
-        }
-
-        let path = app
-            .path_resolver()
-            .app_local_data_dir()
-            .ok_or("Failed to get data directory path")?;
-        let available_llms_path = path.join("llm_available.dat");
-
-        let llm_iter = state.available_llms.iter();
-        let llm_vec: Vec<llm::LLM> = llm_iter.map(|val| (**(val.value())).clone()).collect();
-
-        if let Err(err) = llm::serialize_llms(available_llms_path, &llm_vec) {
-            return Err(format!("Failed to serialize available LLMs: {}", err));
-        }
-
-        println!("Successfully deleted {} — {}", llm.1.id, llm.1.uuid);
-
-        Ok(())
-    } else {
-        return Err(format!("Unable to find LLM"));
+    match database::delete_llm(uuid, state.pool) {
+        Ok(_) => Ok(()),
+        Err(err) => Error("Unable to find and delte llm".into()),
     }
 }
 

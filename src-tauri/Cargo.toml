@@ -1,10 +1,10 @@
 [package]
 name = "pantry"
 version = "0.0.0"
-description = "A Tauri App"
-authors = ["you"]
-license = ""
-repository = ""
+description = "Pantry is an LLM manager, and it's not intended to be installed via Cargo."
+authors = ["julia@jmerz.is"]
+license = "LGPL-3.0-or-later"
+repository = "https://github.com/JuliaMerz/pantry"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -34,9 +34,15 @@ rmp-serde = "1.1.1"
 base64 = "0.21.2"
 rand = "0.8.5"
 tokio-util = "0.7.8"
-axum = "0.3"
+axum = "0.6.18"
 hyper = "0.14"
 hyperlocal = "0.8"
+diesel_migrations = {version = "2.1.0", features = ["sqlite"] }
+diesel = { version="2.1.0", features = ["sqlite", "postgres", "uuid", "serde_json", "chrono", "r2d2"] }
+libsqlite3-sys = { version = "0.25.2", features = ["bundled"] }
+dotenvy = "0.15.7"
+r2d2 = "0.8.10"
+
 
 
 

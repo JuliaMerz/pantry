@@ -1,4 +1,5 @@
 use crate::connectors::{LLMEvent, LLMEventInternal, LLMInternalWrapper};
+use crate::database_types::*;
 use crate::llm::{LLMHistoryItem, LLMSession};
 use crate::state;
 use crate::user::User;
@@ -55,7 +56,7 @@ impl OpenAIConnector {
         let sessions: Vec<LLMSession> = rmp_serde::decode::from_read(&file)?;
         self.sessions = DashMap::new();
         sessions.into_iter().map(|sess| {
-            self.sessions.insert(sess.id, sess);
+            self.sessions.insert(sess.id.0, sess);
         });
         Ok(())
     }
@@ -97,21 +98,21 @@ impl LLMInternalWrapper for OpenAIConnector {
     ) -> Result<Uuid, String> {
         // Here we create a new LLMSession, and push it to our sessions vector
         let new_session = LLMSession {
-            id: Uuid::new_v4(),
+            id: DbUuid(Uuid::new_v4()),
             started: Utc::now(),
             last_called: Utc::now(),
-            user_id: user.id,            // replace with actual user_id
-            llm_uuid: self.uuid.clone(), // replace with actual llm_uuid
-            session_parameters: params,
-            items: vec![],
+            user_id: user.id,                    // replace with actual user_id
+            llm_uuid: DbUuid(self.uuid.clone()), // replace with actual llm_uuid
+            session_parameters: DbHashMap(params),
+            items: DbVec(vec![]),
         };
 
-        self.sessions.insert(new_session.id, new_session.clone());
+        self.sessions.insert(new_session.id.0, new_session.clone());
 
         // After adding the new session to our vector, we serialize the sessions vector to disk
         // Replace "sessions_path" with the actual path
         match self.serialize_sessions() {
-            Ok(_) => Ok(new_session.id), // return the session ID
+            Ok(_) => Ok(new_session.id.0), // return the session ID
             Err(err) => Err(err.to_string()),
         }
     } //uuid
@@ -129,17 +130,17 @@ impl LLMInternalWrapper for OpenAIConnector {
         match self
             .sessions
             .iter_mut()
-            .find(|session| session.id == session_id)
+            .find(|session| session.id.0 == session_id)
         {
             Some(mut session) => {
                 // If the session is found, we add a new history item
                 let item_id = Uuid::new_v4();
                 let new_item = LLMHistoryItem {
-                    id: item_id.clone(),
+                    id: DbUuid(item_id.clone()),
                     updated_timestamp: Utc::now(),
                     call_timestamp: Utc::now(),
                     complete: false, // initially false, will be set to true once response is received
-                    parameters: params.clone(),
+                    parameters: DbHashMap(params.clone()),
                     input: msg.clone(),
                     output: "".into(),
                 };
@@ -155,7 +156,7 @@ impl LLMInternalWrapper for OpenAIConnector {
                         stream_id: item_id.clone(),
                         timestamp: new_item.updated_timestamp.clone(),
                         call_timestamp: new_item.call_timestamp.clone(),
-                        parameters: new_item.parameters.clone(),
+                        parameters: new_item.parameters.0.clone(),
                         input: msg.clone(),
                         llm_uuid: self.uuid.clone(),
                         session: session.clone(),
@@ -170,7 +171,7 @@ impl LLMInternalWrapper for OpenAIConnector {
                         stream_id: item_id.clone(),
                         timestamp: new_item.updated_timestamp.clone(),
                         call_timestamp: new_item.call_timestamp.clone(),
-                        parameters: new_item.parameters.clone(),
+                        parameters: new_item.parameters.0.clone(),
                         input: msg.clone(),
                         llm_uuid: self.uuid.clone(),
                         session: session.clone(),
@@ -183,7 +184,7 @@ impl LLMInternalWrapper for OpenAIConnector {
                 let update_item = session
                     .items
                     .iter_mut()
-                    .find(|item| item.id == item_id)
+                    .find(|item| item.id.0 == item_id)
                     .ok_or("couldn't find session we just made")?;
                 update_item.output = "boop".into();
                 update_item.complete = true;

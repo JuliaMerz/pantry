@@ -32,7 +32,7 @@ pub async fn create_listeners(app: Router) -> Result<(), String> {
     let unix_handle = tokio::spawn(socket_fut);
 
     let tcp_fut =
-        axum::Server::bind(&"0.0.0.0:3000".parse().unwrap()).serve(app.into_make_service());
+        axum::Server::bind(&"0.0.0.0:9404".parse().unwrap()).serve(app.into_make_service());
 
     let tcp_handle = tokio::spawn(tcp_fut);
 
@@ -48,61 +48,26 @@ pub async fn create_listeners(app: Router) -> Result<(), String> {
     Ok(())
 }
 
-#[cfg(target_family = "unix")]
-async fn create_listener_socket_unix() {
-    let listener = UnixListener::bind("/tmp/my_socket.sock").unwrap();
+// On windows we only run the TCP one.
+// There's an ongoing effort to implement window's new UDS support into tokio, but it's not ready
+// yet and fixes currently out aren't super mature yet.
+#[cfg(target_family = "windows")]
+pub async fn create_listeners(app: Router) -> Result<(), String> {
+    // Create an Axum `Server` using the Unix socket listener
 
-    loop {
-        let (mut socket, _) = listener.accept().await.unwrap();
+    let tcp_fut =
+        axum::Server::bind(&"0.0.0.0:3000".parse().unwrap()).serve(app.into_make_service());
 
-        tokio::spawn(async move {
-            let mut buf = vec![0; 1024];
+    let tcp_handle = tokio::spawn(tcp_fut);
 
-            // In a loop, read data from the socket and process the requests.
-            loop {
-                match socket.read(&mut buf).await {
-                    Ok(n) => {
-                        if n == 0 {
-                            return;
-                        }
-
-                        // Process the request...
-                    }
-                    Err(e) => {
-                        eprintln!("Error: {}", e);
-                        return;
-                    }
-                }
-            }
-        });
-    }
-}
-
-async fn create_listeners_tcp_http() {
-    let listener = TcpListener::bind("127.0.0.1:8000").await.unwrap();
-
-    loop {
-        let (mut socket, _) = listener.accept().await.unwrap();
-
-        tokio::spawn(async move {
-            let mut buf = vec![0; 1024];
-
-            // In a loop, read data from the socket and process the requests.
-            loop {
-                match socket.read(&mut buf).await {
-                    Ok(n) => {
-                        if n == 0 {
-                            return;
-                        }
-
-                        // Process the request...
-                    }
-                    Err(e) => {
-                        eprintln!("Error: {}", e);
-                        return;
-                    }
-                }
-            }
-        });
-    }
+    // if one crashes we wanna die
+    match tokio::try_join!(flatten(tcp_handle)) {
+        Ok(val) => {
+            println!("Success?!");
+        }
+        Err(err) => {
+            println!("Failed with {}.", err);
+        }
+    };
+    Ok(())
 }
