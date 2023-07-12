@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::io::prelude::*;
 use std::sync::{Arc, RwLock};
 
+use crate::database;
 use crate::database_types::*;
 use crate::emitter;
 use crate::llm;
@@ -185,48 +186,19 @@ pub async fn download_and_write_llm(
         model_path: DbOptionPathbuf(Some(path.clone())),
     };
 
-    state
-        .available_llms
-        .insert(new_llm.uuid.0.clone(), Arc::new(new_llm));
-
-    let path = app.path_resolver().app_local_data_dir();
-    match path {
-        Some(pp) => {
-            let mut p = pp.to_owned();
-            p.push("llm_available.dat");
-
-            let llm_iter = state.available_llms.iter();
-
-            let llm_vec: Vec<llm::LLM> = llm_iter.map(|val| (**(val.value())).clone()).collect();
-
-            println!("stuff:\n {:?}", llm_vec);
-            let result = llm::serialize_llms(p, &llm_vec);
-            match result {
-                Ok(_) => {
-                    println!("Successful download, llms serialized");
-                    app.emit_all(
-                        "downloads",
-                        emitter::EventPayload {
-                            stream_id: stream_id.clone(),
-                            event: emitter::EventType::DownloadCompletion {},
-                        },
-                    )?;
-                }
-                Err(_) => {
-                    println!("Failed to save download");
-                    app.emit_all(
-                        "downloads",
-                        emitter::EventPayload {
-                            stream_id: stream_id.clone(),
-                            event: emitter::EventType::DownloadError {
-                                message: "failed to save llm".into(),
-                            },
-                        },
-                    )?;
-                }
-            }
+    match database::save_new_llm(new_llm, state.pool.clone()) {
+        Ok(_) => {
+            println!("Successful download, llms serialized");
+            app.emit_all(
+                "downloads",
+                emitter::EventPayload {
+                    stream_id: stream_id.clone(),
+                    event: emitter::EventType::DownloadCompletion {},
+                },
+            )?;
         }
-        None => {
+        Err(_) => {
+            println!("Failed to save download");
             app.emit_all(
                 "downloads",
                 emitter::EventPayload {
@@ -238,7 +210,6 @@ pub async fn download_and_write_llm(
             )?;
         }
     }
-
     app.emit_all(
         "downloads",
         emitter::EventPayload {

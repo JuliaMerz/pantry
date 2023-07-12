@@ -1,42 +1,36 @@
-use crate::state;
-use chrono::prelude::*;
-use chrono::DateTime;
-use chrono::Utc;
-use dashmap::DashMap;
-use diesel::prelude::*;
-use diesel::r2d2::ConnectionManager;
-use r2d2::Pool;
-use rmp_serde;
-use serde_json::json;
-use serde_json::Value;
-use tiny_tokio_actor::*;
-
-use uuid::Uuid;
-
-use crate::database_types::*;
-use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
-use tokio::sync::Mutex;
-
-use tokio::select;
-use tokio_util::sync::CancellationToken;
-
 use crate::connectors;
 use crate::connectors::llm_actor;
 use crate::connectors::llm_actor::LLMActor;
 use crate::connectors::llm_manager;
 use crate::database;
+use crate::database_types::*;
 use crate::error::PantryError;
 use crate::frontend;
 use crate::registry;
+use crate::state;
 use crate::user;
-use tokio::sync::mpsc;
-
 use bincode;
+use chrono::prelude::*;
+use chrono::DateTime;
+use chrono::Utc;
+use dashmap::DashMap;
+use diesel::prelude::*;
+use diesel::r2d2::{ConnectionManager, Pool};
+use rmp_serde;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
+use serde_json::Value;
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::PathBuf;
+use std::sync::{Arc, RwLock};
+use tiny_tokio_actor::*;
+use tokio::select;
+use tokio::sync::mpsc;
+use tokio::sync::Mutex;
+use tokio_util::sync::CancellationToken;
+use uuid::Uuid;
 
 // src/llm.rs
 
@@ -293,7 +287,7 @@ impl LLMActivated {
 #[async_trait]
 impl LLMWrapper for LLMActivated {
     fn get_info(&self) -> frontend::LLMStatus {
-        match database::get_llm(self.llm_id, self.pool) {
+        match database::get_llm(self.llm_id, self.pool.clone()) {
             Ok(llm) => frontend::LLMStatus {
                 status: format!(
                     "ID: {}, Name: {}, Description: {}",
@@ -353,7 +347,7 @@ impl LLMWrapper for LLMActivated {
             self.llm_id, user
         );
         // Reconcile Parameters
-        let llm = database::get_llm(self.llm_id, self.pool)
+        let llm = database::get_llm(self.llm_id, self.pool.clone())
             .map_err(|err| PantryError::OtherFailure(err.to_string()))?;
 
         let mut armed_params = llm.session_parameters.0.clone();

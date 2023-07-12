@@ -172,9 +172,8 @@ impl Deref for GlobalStateWrapper {
 pub struct GlobalState {
     pub user_settings: RwLock<UserSettings>,
     pub manager_addr: ActorRef<connectors::SysEvent, llm_manager::LLMManagerActor>,
-    // pub running_llms: DashSet<String>,
     pub activated_llms: DashMap<Uuid, llm::LLMActivated>,
-    pub available_llms: DashMap<Uuid, Arc<llm::LLM>>,
+    // pub available_llms: DashMap<Uuid, Arc<llm::LLM>>,
     pub pool: Pool<ConnectionManager<SqliteConnection>>,
 }
 

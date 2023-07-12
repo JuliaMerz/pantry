@@ -35,7 +35,7 @@ pub fn get_llm(
         .filter(uuid.eq(DbUuid(llm_id)))
         .select(LLM::as_select())
         .first(conn);
-    Ok(results)
+    results.map_err(|err| format!("Failed because: {:?}", err.to_string()))
 }
 
 pub fn get_available_llms(
@@ -111,9 +111,12 @@ pub fn update_session_last_called(
 // set complete bool at the same time
 pub fn append_token(
     llm_history: LLMHistoryItem,
+    t: String,
+    complete: bool,
     pool: Pool<ConnectionManager<SqliteConnection>>,
 ) -> Result<LLMHistoryItem, String> {
     let conn = &mut pool.get().unwrap();
+    //remember to update timeastamps!~
     todo!()
 }
 
@@ -138,6 +141,7 @@ pub fn save_new_llm_history(
     pool: Pool<ConnectionManager<SqliteConnection>>,
 ) -> Result<LLMHistoryItem, String> {
     let conn = &mut pool.get().unwrap();
+    // Remember to write a smoooooooth update statement to update session last called
     todo!()
 }
 
@@ -153,6 +157,14 @@ pub fn save_new_user(
     user: User,
     pool: Pool<ConnectionManager<SqliteConnection>>,
 ) -> Result<User, String> {
+    let conn = &mut pool.get().unwrap();
+    todo!()
+}
+
+pub fn get_llm_sessions_user(
+    user: User,
+    pool: Pool<ConnectionManager<SqliteConnection>>,
+) -> Result<Vec<LLMSession>, String> {
     let conn = &mut pool.get().unwrap();
     todo!()
 }

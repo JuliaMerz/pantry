@@ -1,9 +1,8 @@
 //server.rs
+use crate::database;
 use crate::database_types::*;
-use crate::listeners::create_listeners;
 use crate::llm::{LLMActivated, LLM};
 use crate::registry;
-use crate::request;
 use crate::request::{UserRequest, UserRequestType};
 use crate::schema;
 use crate::state;
@@ -11,6 +10,7 @@ use crate::user;
 use axum::{extract::State, response::Html, routing::get, Json, Router};
 use chrono::DateTime;
 use chrono::Utc;
+use diesel::r2d2::{ConnectionManager, Pool};
 use diesel::{connection, prelude::*};
 use hyper::StatusCode;
 use hyperlocal::UnixServerExt;
@@ -130,12 +130,9 @@ fn user_permission_check(
     api_key: String,
     // user: &user::User,
     user_id: Uuid,
-    conn: &mut SqliteConnection,
+    pool: Pool<ConnectionManager<SqliteConnection>>,
 ) -> Result<(), (StatusCode, String)> {
-    let user = schema::user::table
-        .filter(schema::user::id.eq(DbUuid(user_id)))
-        .select(user::User::as_select())
-        .first(conn)
+    let user = database::get_user(user_id, pool)
         .map_err(|err| (StatusCode::UNAUTHORIZED, "Not a Valid User {:?}".into()))?;
     if user.api_key != api_key {
         return Err((StatusCode::UNAUTHORIZED, "Incorrect API Key".into()));
@@ -152,6 +149,7 @@ fn user_permission_check(
         "request_download" => user.perm_request_download.clone(),
         "request_load" => user.perm_request_load.clone(),
         "request_unload" => user.perm_request_unload.clone(),
+        &_ => false,
     };
     match auth {
         true => Ok(()),
@@ -180,7 +178,7 @@ fn request_permissions(
 ) -> Result<Json<Value>, (StatusCode, String)> {
     let user_uuid =
         Uuid::parse_str(&user_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
-    let user = user_permission_check("", api_key, user_uuid, &mut (*state.conn.lock().unwrap()));
+    let user = user_permission_check("", api_key, user_uuid, state.pool.clone());
     // state
     // .registered_users
     // .get(&user_uuid)

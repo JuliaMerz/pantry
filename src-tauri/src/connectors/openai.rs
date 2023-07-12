@@ -5,6 +5,8 @@ use crate::state;
 use crate::user::User;
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
+use diesel::prelude::*;
+use diesel::r2d2::{ConnectionManager, Pool};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs::File;
@@ -20,8 +22,8 @@ pub struct OpenAIConnector {
     config: HashMap<String, Value>,
     uuid: Uuid,
     data_path: PathBuf,
-    sessions: DashMap<Uuid, LLMSession>,
     user_settings: state::UserSettings,
+    pool: Pool<ConnectionManager<SqliteConnection>>,
 }
 
 impl OpenAIConnector {
@@ -30,35 +32,18 @@ impl OpenAIConnector {
         data_path: PathBuf,
         config: HashMap<String, Value>,
         user_settings: state::UserSettings,
+        pool: Pool<ConnectionManager<SqliteConnection>>,
     ) -> OpenAIConnector {
         let mut path = data_path.clone();
         path.push(format!("openai-{}", uuid.to_string()));
         let mut conn = OpenAIConnector {
-            config: config,
+            config,
             data_path: path,
-            uuid: uuid,
-            sessions: DashMap::new(),
+            uuid,
             user_settings,
+            pool,
         };
-        conn.deserialize_sessions();
         conn
-    }
-
-    // Utility functions to serialize and deserialize sessions
-    pub fn serialize_sessions(&self) -> Result<(), Box<dyn std::error::Error>> {
-        let mut file = File::create(&self.data_path)?;
-        rmp_serde::encode::write_named(&mut file, &self.sessions)?;
-        Ok(())
-    }
-
-    pub fn deserialize_sessions(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let mut file = File::open(&self.data_path)?;
-        let sessions: Vec<LLMSession> = rmp_serde::decode::from_read(&file)?;
-        self.sessions = DashMap::new();
-        sessions.into_iter().map(|sess| {
-            self.sessions.insert(sess.id.0, sess);
-        });
-        Ok(())
     }
 }
 
@@ -80,15 +65,7 @@ impl LLMInternalWrapper for OpenAIConnector {
 
     async fn get_sessions(&self, user: User) -> Result<Vec<LLMSession>, String> {
         // Filter sessions by user ID and clone them into a new vector
-        let user_sessions = self
-            .sessions
-            .clone()
-            .into_iter()
-            .filter(|(uuid, session)| session.user_id == user.id)
-            .map(|(uuid, llm_sess)| llm_sess)
-            .collect();
-
-        Ok(user_sessions)
+        todo!()
     }
 
     async fn create_session(
@@ -104,17 +81,11 @@ impl LLMInternalWrapper for OpenAIConnector {
             user_id: user.id,                    // replace with actual user_id
             llm_uuid: DbUuid(self.uuid.clone()), // replace with actual llm_uuid
             session_parameters: DbHashMap(params),
-            items: DbVec(vec![]),
         };
-
-        self.sessions.insert(new_session.id.0, new_session.clone());
 
         // After adding the new session to our vector, we serialize the sessions vector to disk
         // Replace "sessions_path" with the actual path
-        match self.serialize_sessions() {
-            Ok(_) => Ok(new_session.id.0), // return the session ID
-            Err(err) => Err(err.to_string()),
-        }
+        todo!()
     } //uuid
     async fn prompt_session(
         &mut self,
@@ -127,74 +98,7 @@ impl LLMInternalWrapper for OpenAIConnector {
     ) -> Result<(), String> {
         // Here we find the session by ID in our sessions vector
         println!("attempting to find session");
-        match self
-            .sessions
-            .iter_mut()
-            .find(|session| session.id.0 == session_id)
-        {
-            Some(mut session) => {
-                // If the session is found, we add a new history item
-                let item_id = Uuid::new_v4();
-                let new_item = LLMHistoryItem {
-                    id: DbUuid(item_id.clone()),
-                    updated_timestamp: Utc::now(),
-                    call_timestamp: Utc::now(),
-                    complete: false, // initially false, will be set to true once response is received
-                    parameters: DbHashMap(params.clone()),
-                    input: msg.clone(),
-                    output: "".into(),
-                };
-
-                session.items.push(new_item.clone());
-                session.last_called = Utc::now();
-
-                // Here you should actually make the API call using the session and msg.
-                // eventual opani api calls
-
-                sender
-                    .send(LLMEvent {
-                        stream_id: item_id.clone(),
-                        timestamp: new_item.updated_timestamp.clone(),
-                        call_timestamp: new_item.call_timestamp.clone(),
-                        parameters: new_item.parameters.0.clone(),
-                        input: msg.clone(),
-                        llm_uuid: self.uuid.clone(),
-                        session: session.clone(),
-                        event: LLMEventInternal::PromptProgress {
-                            previous: "".into(),
-                            next: "boop".into(),
-                        },
-                    })
-                    .await;
-                sender
-                    .send(LLMEvent {
-                        stream_id: item_id.clone(),
-                        timestamp: new_item.updated_timestamp.clone(),
-                        call_timestamp: new_item.call_timestamp.clone(),
-                        parameters: new_item.parameters.0.clone(),
-                        input: msg.clone(),
-                        llm_uuid: self.uuid.clone(),
-                        session: session.clone(),
-                        event: LLMEventInternal::PromptCompletion {
-                            previous: "boop".into(),
-                        },
-                    })
-                    .await;
-
-                let update_item = session
-                    .items
-                    .iter_mut()
-                    .find(|item| item.id.0 == item_id)
-                    .ok_or("couldn't find session we just made")?;
-                update_item.output = "boop".into();
-                update_item.complete = true;
-                // drop(session);
-            }
-            None => println!("Session with id {} not found.", session_id),
-        };
-        println!("before serialize");
-        self.serialize_sessions();
-        println!("after serialize");
+        todo!();
         Ok(())
     }
     async fn load_llm(self: &mut Self) -> Result<(), String> {

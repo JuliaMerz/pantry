@@ -68,7 +68,7 @@ impl ToSql<diesel::sql_types::Text, Sqlite> for UserRequestType {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Queryable, Selectable, Insertable)]
-#[diesel(table_name = crate::schema::llm_requests)]
+#[diesel(table_name = crate::schema::requests)]
 #[diesel(belongs_to(user::User))]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
 pub struct UserRequest {

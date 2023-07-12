@@ -2,6 +2,8 @@ use crate::state;
 use crate::{llm::LLMSession, registry::LLMRegistryEntryConnector, user};
 use chrono::prelude::*;
 use diesel::deserialize::{self, FromSql};
+use diesel::prelude::*;
+use diesel::r2d2::{ConnectionManager, Pool};
 use diesel::serialize::{self, IsNull, Output, ToSql};
 use diesel::sqlite::{Sqlite, SqliteValue};
 use diesel::*;

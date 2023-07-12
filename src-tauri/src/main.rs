@@ -122,25 +122,8 @@ async fn main() {
         let state: tauri::State<state::GlobalStateWrapper> = app.state();
 
         let stores = app.state::<StoreCollection<Wry>>();
-        let path = PathBuf::from(".settings.dat");
 
         // Load user settings, then return running_llms.
-        let running_llms_vec: Result<Vec<Uuid>, _> =
-            with_store(app.handle(), stores, path, |store| {
-                // let user_settings_json:Option<Arc> =
-
-                // let running_llms_json:Vec<LLM> =
-                match store.get("active_llms") {
-                    Some(val2) => {
-                        println!("Found active_llms attempting to deserialize");
-                        match serde_json::from_value(val2.to_owned()) {
-                            Err(_) => Ok(Vec::new()),
-                            Ok(value) => Ok(value),
-                        }
-                    }
-                    None => Ok(Vec::new()),
-                }
-            });
 
         // Load available LLMs
 
@@ -148,94 +131,6 @@ async fn main() {
             .path_resolver()
             .app_local_data_dir()
             .ok_or("no path no pantry")?;
-
-        path.push("llm_available.dat");
-        println!("path used: {:?}", path);
-        match llm::deserialize_llms(path.clone()) {
-            Ok(llms) => {
-                println!("Found llm_available.dat, loading");
-                llms.into_iter()
-                    .map(|val| {
-                        state
-                            .available_llms
-                            .insert(val.uuid.0.clone(), Arc::new(val))
-                    })
-                    .for_each(drop);
-            }
-            Err(err) => {
-                println!("Error finding llm, using factory. Err: {:?}", err);
-                connectors::factory::factory_llms()
-                    .into_iter()
-                    .map(|val| {
-                        state
-                            .available_llms
-                            .insert(val.uuid.0.clone(), Arc::new(val))
-                    })
-                    .for_each(drop);
-
-                // mostly test
-                let llm_iter = state.available_llms.iter();
-
-                let llm_vec: Vec<llm::LLM> =
-                    llm_iter.map(|val| (**(val.value())).clone()).collect();
-                match llm::serialize_llms(path, &llm_vec) {
-                    Ok(res) => {
-                        println!("serialized successfully! {:?}", res);
-                    }
-                    Err(err) => {
-                        println!("failed serialize test: {:?}", err);
-                    }
-                }
-            }
-        }
-
-        // match running_llms_json {
-        //     Ok(val) => {
-        //         match serde_json::from_value(*val) {
-        //             Ok(value) => {running_llms = value;}
-        //             Err(_) => { running_llms = Vec::new() }
-        //         }
-        //     },
-        //     Err(_) => {state.user_settings = None}
-        // }
-        let new_path = app
-            .path_resolver()
-            .app_local_data_dir()
-            .ok_or("no path no pantry")?;
-
-        // If running LLMs exist, we need to boot them up.
-        let app_handle = app.handle();
-        if running_llms_vec.is_ok() {
-            println!("processing running LLMs");
-            tokio::spawn(async move {
-                let state_pointer: Arc<tauri::State<state::GlobalStateWrapper>> =
-                    Arc::new(app_handle.state());
-                for val in running_llms_vec.unwrap().into_iter() {
-                    let manager_addr_copy = manager_addr_clone.clone();
-                    if let Some(new_llm) = state_pointer.available_llms.get(&val) {
-                        let result = llm::LLMActivated::activate_llm(
-                            new_llm.value().clone(),
-                            manager_addr_copy,
-                            new_path.clone(),
-                            state::UserSettings::new(
-                                app_handle.path_resolver().app_local_data_dir().unwrap(),
-                            ),
-                        )
-                        .await;
-                        // new_llm.load();
-                        match result {
-                            Ok(running) => {
-                                println!("Inserting {val} into running LLMs");
-                                state_pointer.activated_llms.insert(val, running);
-                            }
-                            Err(err) => {
-                                println!("failed to launch {val} skipping");
-                            }
-                        }
-                    }
-                }
-            });
-        }
 
         Ok(())
     });

@@ -10,17 +10,11 @@ use crate::user;
 use chrono::serde::ts_seconds_option;
 use chrono::DateTime;
 use chrono::Utc;
-use dashmap::DashMap;
-use keyring::Entry;
-use serde_json::json;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::path::PathBuf;
 use tauri::Manager;
 use tauri::{AppHandle, Wry};
-use tauri_plugin_store::with_store;
-use tauri_plugin_store::StoreCollection;
-use uuid::{uuid, Uuid};
+use uuid::Uuid;
 
 //
 // These types are just for API interfacing.
@@ -131,7 +125,7 @@ impl From<&llm::LLM> for LLMInfo {
 impl From<&llm::LLMActivated> for LLMRunningInfo {
     fn from(value: &llm::LLMActivated) -> Self {
         LLMRunningInfo {
-            llm_info: value.llm.as_ref().into(),
+            llm_info: (&value.llm).into(),
             download_reason: format!(
                 "Downloaded {} for {}",
                 value.llm.downloaded_date.format("%b %e %T %Y"),
@@ -144,7 +138,7 @@ impl From<&llm::LLMActivated> for LLMRunningInfo {
                 value.activated_time.format("%b %e %T %Y"),
                 value.activated_reason
             ),
-            uuid: value.llm.as_ref().uuid.to_string(),
+            uuid: value.llm.uuid.to_string(),
         }
     }
 }
@@ -216,13 +210,13 @@ pub async fn available_llms(
     state: tauri::State<'_, state::GlobalStateWrapper>,
 ) -> Result<CommandResponse<Vec<LLMAvailable>>, String> {
     println!("received command available_llms");
-    let available_llms_iter = database::get_available_llms(state.pool);
+    let available_llms_iter = database::get_available_llms(state.pool.clone())?;
     // let mut available_llms: Vec<LLMAvailable> = Vec::new();
     // for val in available_llms_iter {
     //     available_llms.push(val.value().clone().as_ref().into())
     // }
     Ok(CommandResponse {
-        data: available_llms_iter.into(),
+        data: available_llms_iter.iter().map(|llm| llm.into()).collect(),
     })
 }
 
@@ -327,28 +321,29 @@ pub async fn load_llm(
 
     let manager_addr_copy = state.manager_addr.clone();
 
-    let new_llm = database::get_llm(uuid, state.pool)?;
+    let new_llm = database::get_llm(uuid, state.pool.clone())?;
 
-    if let Some(new_llm) = state.available_llms.get(&uuid) {
-        let path = app
-            .path_resolver()
-            .app_local_data_dir()
-            .ok_or("no path no llms")?;
-        let settings = state.user_settings.read().unwrap().clone();
-        let result =
-            llm::LLMActivated::activate_llm(new_llm.clone(), manager_addr_copy, path, settings)
-                .await;
-        // new_llm.load();
-        match result {
-            Ok(running) => {
-                println!("Inserting {uuid} into running LLMs");
-                state.activated_llms.insert(uuid, running);
-                Ok(())
-            }
-            Err(err) => Err("failed to launch {id} skipping".into()),
+    let path = app
+        .path_resolver()
+        .app_local_data_dir()
+        .ok_or("no path no llms")?;
+    let settings = state.user_settings.read().unwrap().clone();
+    let result = llm::LLMActivated::activate_llm(
+        new_llm.clone(),
+        manager_addr_copy,
+        path,
+        settings,
+        state.pool.clone(),
+    )
+    .await;
+    // new_llm.load();
+    match result {
+        Ok(running) => {
+            println!("Inserting {uuid} into running LLMs");
+            state.activated_llms.insert(uuid, running);
+            Ok(())
         }
-    } else {
-        Err("couldn't find matching llm".into())
+        Err(err) => Err("failed to launch {id} skipping".into()),
     }
 
     //if let Some(llm) = state.available_llms.get(&id) {
@@ -401,7 +396,7 @@ pub struct PromptSessionResponse {
 pub struct CreateSessionResponse {
     pub session_parameters: HashMap<String, Value>,
     // I don't think we use this, we don't need it.
-    pub llm_info: LLMInfo,
+    // pub llm_info: LLMInfo,
     pub session_id: String,
 }
 
@@ -632,9 +627,9 @@ pub async fn delete_llm(
             })?
             .map_err(|err| format!("Failed to unload: {:?}", err))?;
     }
-    match database::delete_llm(uuid, state.pool) {
+    match database::delete_llm(uuid, state.pool.clone()) {
         Ok(_) => Ok(()),
-        Err(err) => Error("Unable to find and delte llm".into()),
+        Err(err) => Err("Unable to find and delte llm".into()),
     }
 }
 

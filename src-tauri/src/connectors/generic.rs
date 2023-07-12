@@ -2,6 +2,8 @@ use crate::connectors::{LLMEvent, LLMEventInternal, LLMInternalWrapper};
 use crate::llm::{LLMHistoryItem, LLMSession};
 use crate::state;
 use crate::user::User;
+use diesel::prelude::*;
+use diesel::r2d2::{ConnectionManager, Pool};
 use serde_json::Value;
 use std::{collections::HashMap, path::PathBuf};
 use tiny_tokio_actor::*;
@@ -12,6 +14,7 @@ use uuid::Uuid;
 pub struct GenericAPIConnector {
     config: HashMap<String, Value>,
     user_settings: state::UserSettings,
+    pub pool: Pool<ConnectionManager<SqliteConnection>>,
 }
 
 impl GenericAPIConnector {
@@ -20,10 +23,12 @@ impl GenericAPIConnector {
         data_path: PathBuf,
         config: HashMap<String, Value>,
         user_settings: state::UserSettings,
+        pool: Pool<ConnectionManager<SqliteConnection>>,
     ) -> GenericAPIConnector {
         GenericAPIConnector {
-            config: config,
-            user_settings: user_settings,
+            config,
+            user_settings,
+            pool,
         }
     }
 }

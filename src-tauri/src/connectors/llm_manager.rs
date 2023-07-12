@@ -3,6 +3,8 @@ use crate::connectors::SysEvent;
 use crate::state;
 use crate::{connectors, error::PantryError};
 use dashmap::DashMap;
+use diesel::prelude::*;
+use diesel::r2d2::{ConnectionManager, Pool};
 use serde_json::Value;
 use std::rc::Rc;
 use std::sync::{Arc, RwLock};

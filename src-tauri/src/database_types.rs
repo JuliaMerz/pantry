@@ -251,7 +251,7 @@ impl FromSql<diesel::sql_types::Text, Sqlite> for DbPathBuf {
 
 impl ToSql<diesel::sql_types::Text, Sqlite> for DbPathBuf {
     fn to_sql<'W>(&self, out: &mut serialize::Output<'W, '_, Sqlite>) -> serialize::Result {
-        out.set_value(self.0.to_str().unwrap());
+        out.set_value(self.0.to_str().unwrap().clone().to_owned());
         Ok(serialize::IsNull::No)
     }
 }
@@ -287,7 +287,7 @@ impl ToSql<diesel::sql_types::Nullable<diesel::sql_types::Text>, Sqlite> for DbO
     fn to_sql<'W>(&self, out: &mut serialize::Output<'W, '_, Sqlite>) -> serialize::Result {
         match self.0.clone() {
             Some(path) => {
-                out.set_value(path.to_str().unwrap());
+                out.set_value(path.to_str().unwrap().clone().to_owned());
                 Ok(serialize::IsNull::No)
             }
             None => Ok(serialize::IsNull::Yes),

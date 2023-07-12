@@ -1,10 +1,13 @@
 use crate::connectors::{LLMEvent, LLMEventInternal, LLMInternalWrapper};
+use crate::database;
 use crate::database_types::*;
 use crate::llm::{LLMHistoryItem, LLMSession};
 use crate::state;
 use crate::user::User;
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
+use diesel::prelude::*;
+use diesel::r2d2::{ConnectionManager, Pool};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -43,6 +46,7 @@ pub struct LLMrsConnector {
     data_path: PathBuf,
     uuid: Uuid,
     user_settings: state::UserSettings,
+    pool: Pool<ConnectionManager<SqliteConnection>>,
 }
 
 impl LLMrsConnector {
@@ -52,17 +56,19 @@ impl LLMrsConnector {
         config: HashMap<String, Value>,
         model_path: PathBuf,
         user_settings: state::UserSettings,
+        pool: Pool<ConnectionManager<SqliteConnection>>,
     ) -> LLMrsConnector {
         let mut path = data_path.clone();
         path.push(format!("llmrs-{}", uuid.to_string()));
         let mut conn = LLMrsConnector {
-            config: config,
-            uuid: uuid,
-            data_path: data_path,
-            model_path: model_path,
+            config,
+            uuid,
+            data_path,
+            model_path,
             model: RwLock::new(None),
             sessions: DashMap::new(),
-            user_settings: user_settings,
+            user_settings,
+            pool,
         };
         conn.deserialize_sessions();
         conn
@@ -177,7 +183,6 @@ impl LLMInternalWrapper for LLMrsConnector {
                 started: Utc::now(),
                 last_called: Utc::now(),
                 session_parameters: DbHashMap(params),
-                items: DbVec(vec![]),
             })),
         };
 
@@ -269,12 +274,7 @@ impl LLMInternalWrapper for LLMrsConnector {
             output: "".into(),
         };
 
-        diesel::insert_into(schema::llm_history)
-            .values(new_item)
-            .execute(conn);
-
-        llm_session_armed.items.push(new_item.clone());
-        llm_session_armed.last_called = Utc::now();
+        let new_item = database::save_new_llm_history(new_item, self.pool.clone())?;
 
         println!("Attempting to infer");
         // Call the llm
@@ -301,12 +301,8 @@ impl LLMInternalWrapper for LLMrsConnector {
 
                         let session_clone = llm_session_armed.clone();
 
-                        let update_item = llm_session_armed
-                            .items
-                            .iter_mut()
-                            .find(|item| item.id.0 == item_id)
-                            .ok_or("couldn't find session we just made")
-                            .unwrap();
+                        let update_item =
+                            database::get_llm_history(item_id, self.pool.clone()).unwrap();
 
                         let event = LLMEvent {
                             stream_id: item_id.clone(),
@@ -331,10 +327,12 @@ impl LLMInternalWrapper for LLMrsConnector {
                         });
 
                         // TODO: send a prompt complete here
-                        update_item.output.push_str(&t);
-                        if cancellation.is_cancelled() {
+                        let cancel = cancellation.is_cancelled();
+                        let update_item =
+                            database::append_token(update_item, t, cancel, self.pool.clone())
+                                .unwrap();
+                        if cancel {
                             println!("SENT CONCLUSION");
-                            update_item.complete = true;
                             let mut event_clone = event.clone();
                             event_clone.event = LLMEventInternal::PromptCompletion {
                                 previous: update_item.output.clone().into(),
@@ -356,6 +354,8 @@ impl LLMInternalWrapper for LLMrsConnector {
                         }
                     }
                     _ => match cancellation.is_cancelled() {
+                        // TODO: mark complete here
+                        // TODO: mark complete final token whatever
                         true => Ok(llm::InferenceFeedback::Halt),
                         false => Ok(llm::InferenceFeedback::Continue),
                     },
