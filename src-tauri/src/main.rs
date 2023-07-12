@@ -1,7 +1,7 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 use crate::connectors::llm_manager;
-use crate::llm::LLMWrapper;
+
 use dashmap::DashMap;
 use diesel::prelude::*;
 use diesel::r2d2::ConnectionManager;
@@ -9,27 +9,27 @@ use diesel::r2d2::Pool;
 use diesel::sqlite::Sqlite;
 use diesel::sqlite::SqliteConnection;
 use dotenvy::dotenv;
-use frontend::available_llms;
-use serde::Serialize;
+
+
 use std::collections::HashMap;
 use std::env;
 use std::error::Error;
-use std::path::PathBuf;
-use std::sync::Arc;
-use std::thread;
-use std::time;
+
+
+
+
 use tauri::{
-    window::WindowBuilder, CustomMenuItem, Manager, RunEvent, SystemTray, SystemTrayEvent,
-    SystemTrayMenu, WindowEvent, WindowUrl, Wry,
+    CustomMenuItem, Manager,
+    SystemTrayMenu, Wry,
 };
-use tauri_plugin_store::with_store;
+
 use tauri_plugin_store::StoreCollection;
 use tiny_tokio_actor::*;
 use tokio;
-use uuid::Uuid;
+
 
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
-use tauri::api::path::app_data_dir;
+
 pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations");
 
 mod connectors;
@@ -81,13 +81,13 @@ fn run_migrations(
 async fn main() {
     tauri::async_runtime::set(tokio::runtime::Handle::current());
 
-    let tray_menu = SystemTrayMenu::new().add_item(CustomMenuItem::new("toggle", "Toggle"));
+    let _tray_menu = SystemTrayMenu::new().add_item(CustomMenuItem::new("toggle", "Toggle"));
 
     let bus = EventBus::<connectors::SysEvent>::new(1000);
 
     let system = ActorSystem::new("pantry", bus);
 
-    let mut pool = get_connection_pool();
+    let pool = get_connection_pool();
 
     let man_act = connectors::llm_manager::LLMManagerActor {
         active_llm_actors: HashMap::new(),
@@ -108,7 +108,7 @@ async fn main() {
         }
     });
 
-    let manager_addr_clone = manager_addr.clone();
+    let _manager_addr_clone = manager_addr.clone();
 
     let builder = tauri::Builder::default().setup(move |app| {
         #[cfg(debug_assertions)] // only include this code on debug builds
@@ -119,15 +119,15 @@ async fn main() {
         }
 
         // Load up the state
-        let state: tauri::State<state::GlobalStateWrapper> = app.state();
+        let _state: tauri::State<state::GlobalStateWrapper> = app.state();
 
-        let stores = app.state::<StoreCollection<Wry>>();
+        let _stores = app.state::<StoreCollection<Wry>>();
 
         // Load user settings, then return running_llms.
 
         // Load available LLMs
 
-        let mut path = app
+        let _path = app
             .path_resolver()
             .app_local_data_dir()
             .ok_or("no path no pantry")?;

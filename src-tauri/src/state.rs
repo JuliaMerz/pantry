@@ -1,22 +1,22 @@
 use crate::connectors; //::LLMRegistryEntry;
 use crate::connectors::llm_manager;
-use crate::error::PantryError;
-use crate::frontend::available_llms;
+
+
 use crate::llm;
-use crate::registry; //::LLMRegistryEntry;
-use crate::request;
-use crate::user;
-use dashmap::{DashMap, DashSet};
+ //::LLMRegistryEntry;
+
+
+use dashmap::{DashMap};
 use diesel::prelude::*;
 use diesel::r2d2::ConnectionManager;
 use diesel::r2d2::Pool;
 use keyring;
 use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::collections::HashMap;
+
 use std::ops::Deref;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
 use tiny_tokio_actor::*;
 
 use uuid::Uuid;
@@ -183,7 +183,7 @@ pub struct GlobalState {
 pub fn create_global_state(
     addr: ActorRef<connectors::SysEvent, llm_manager::LLMManagerActor>,
     activated_llms: DashMap<Uuid, llm::LLMActivated>,
-    available_llms: DashMap<Uuid, Arc<llm::LLM>>,
+    _available_llms: DashMap<Uuid, Arc<llm::LLM>>,
     settings_path: PathBuf,
     pool: Pool<ConnectionManager<SqliteConnection>>,
 ) -> GlobalStateWrapper {

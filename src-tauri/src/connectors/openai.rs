@@ -1,19 +1,19 @@
-use crate::connectors::{LLMEvent, LLMEventInternal, LLMInternalWrapper};
+use crate::connectors::{LLMEvent, LLMInternalWrapper};
 use crate::database_types::*;
-use crate::llm::{LLMHistoryItem, LLMSession};
+use crate::llm::{LLMSession};
 use crate::state;
 use crate::user::User;
-use chrono::{DateTime, Utc};
-use dashmap::DashMap;
+use chrono::{Utc};
+
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool};
 use serde_json::Value;
 use std::collections::HashMap;
-use std::fs::File;
+
 use std::path::PathBuf;
-use std::sync::mpsc::{Receiver, Sender};
+
 use tiny_tokio_actor::*;
-use tiny_tokio_actor::*;
+
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
@@ -36,7 +36,7 @@ impl OpenAIConnector {
     ) -> OpenAIConnector {
         let mut path = data_path.clone();
         path.push(format!("openai-{}", uuid.to_string()));
-        let mut conn = OpenAIConnector {
+        let conn = OpenAIConnector {
             config,
             data_path: path,
             uuid,
@@ -63,7 +63,7 @@ impl LLMInternalWrapper for OpenAIConnector {
     //     }
     // }
 
-    async fn get_sessions(&self, user: User) -> Result<Vec<LLMSession>, String> {
+    async fn get_sessions(&self, _user: User) -> Result<Vec<LLMSession>, String> {
         // Filter sessions by user ID and clone them into a new vector
         todo!()
     }
@@ -74,7 +74,7 @@ impl LLMInternalWrapper for OpenAIConnector {
         user: User,
     ) -> Result<Uuid, String> {
         // Here we create a new LLMSession, and push it to our sessions vector
-        let new_session = LLMSession {
+        let _new_session = LLMSession {
             id: DbUuid(Uuid::new_v4()),
             started: Utc::now(),
             last_called: Utc::now(),
@@ -89,12 +89,12 @@ impl LLMInternalWrapper for OpenAIConnector {
     } //uuid
     async fn prompt_session(
         &mut self,
-        session_id: Uuid,
-        msg: String,
-        params: HashMap<String, Value>,
-        user: User,
-        sender: mpsc::Sender<LLMEvent>,
-        cancellation: CancellationToken,
+        _session_id: Uuid,
+        _msg: String,
+        _params: HashMap<String, Value>,
+        _user: User,
+        _sender: mpsc::Sender<LLMEvent>,
+        _cancellation: CancellationToken,
     ) -> Result<(), String> {
         // Here we find the session by ID in our sessions vector
         println!("attempting to find session");

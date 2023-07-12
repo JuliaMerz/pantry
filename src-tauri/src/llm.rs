@@ -1,15 +1,15 @@
 use crate::connectors;
 use crate::connectors::llm_actor;
-use crate::connectors::llm_actor::LLMActor;
+
 use crate::connectors::llm_manager;
 use crate::database;
 use crate::database_types::*;
 use crate::error::PantryError;
 use crate::frontend;
-use crate::registry;
+
 use crate::state;
 use crate::user;
-use bincode;
+
 use chrono::prelude::*;
 use chrono::DateTime;
 use chrono::Utc;
@@ -17,18 +17,18 @@ use dashmap::DashMap;
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool};
 use rmp_serde;
-use serde::{Deserialize, Serialize};
+
 use serde_json::json;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::{Read, Write};
+
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc};
 use tiny_tokio_actor::*;
-use tokio::select;
+
 use tokio::sync::mpsc;
-use tokio::sync::Mutex;
+
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
@@ -235,7 +235,7 @@ pub fn serialize_llms(path: PathBuf, llms: &Vec<LLM>) -> Result<(), Box<dyn std:
 }
 
 pub fn deserialize_llms(path: PathBuf) -> Result<Vec<LLM>, Box<dyn std::error::Error>> {
-    let mut file = File::open(path)?;
+    let file = File::open(path)?;
     let llms: Vec<LLM> = rmp_serde::decode::from_read(&file)?;
     // let mut buffer = Vec::new();
     // file.read_to_end(&mut buffer)?;
@@ -406,7 +406,7 @@ impl LLMWrapper for LLMActivated {
 
         let cloned_params = armed_params.clone();
 
-        let interrupts_clone = self.interrupts.clone();
+        let _interrupts_clone = self.interrupts.clone();
 
         let token = CancellationToken::new();
         let cloned_token = token.clone();
@@ -563,7 +563,7 @@ impl LLMWrapper for LLMActivated {
         user: user::User,
     ) -> Result<bool, PantryError> {
         //api layer should verify user == user
-        let key = (session_id.clone(), user.id.clone());
+        let _key = (session_id.clone(), user.id.clone());
 
         println!("Attempting to interrupt session");
         let key = (session_id.clone(), user.id.0.clone());

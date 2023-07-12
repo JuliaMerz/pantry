@@ -1,23 +1,23 @@
-use chrono::{DateTime, Utc};
-use diesel::backend::Backend;
-use diesel::connection::SimpleConnection;
-use diesel::deserialize::{self, FromSql};
-use diesel::expression::{Expression, NonAggregate, SelectableExpression};
+
+
+
+use diesel::deserialize::{FromSql};
+
 use diesel::query_builder::QueryId;
-use diesel::serialize::{self, IsNull, Output, ToSql};
-use diesel::sql_types::Text;
+use diesel::serialize::{self, Output, ToSql};
+
 use diesel::*;
 use uuid::Uuid;
 
-use diesel::prelude::*;
+
 use diesel::sqlite::{Sqlite, SqliteValue};
 use serde_json;
-use serde_json::{json, Value};
+use serde_json::{Value};
 use std::collections::HashMap;
-use std::io::Write;
+
 use std::ops::Deref;
 use std::path::PathBuf;
-use std::sync::RwLock;
+
 
 // Type conversions for diesel database usage.
 //

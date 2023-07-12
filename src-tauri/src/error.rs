@@ -1,8 +1,8 @@
-use quick_error::{quick_error, ResultExt};
+use quick_error::{quick_error};
 use tiny_tokio_actor::ActorError;
 
 use std::convert::From;
-use std::fmt;
+
 
 
 quick_error! {

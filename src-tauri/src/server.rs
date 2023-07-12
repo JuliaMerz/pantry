@@ -1,22 +1,22 @@
 //server.rs
 use crate::database;
-use crate::database_types::*;
+
 use crate::llm::{LLMActivated, LLM};
 use crate::registry;
 use crate::request::{UserRequest, UserRequestType};
 use crate::schema;
 use crate::state;
 use crate::user;
-use axum::{extract::State, response::Html, routing::get, Json, Router};
+use axum::{extract::State, Json};
 use chrono::DateTime;
 use chrono::Utc;
 use diesel::r2d2::{ConnectionManager, Pool};
-use diesel::{connection, prelude::*};
+use diesel::{prelude::*};
 use hyper::StatusCode;
-use hyperlocal::UnixServerExt;
+
 use serde_json::Value;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, RwLock};
+
 use uuid::Uuid;
 
 // We're deliberately disconnecting these datastructures from frontend.rs
@@ -133,7 +133,7 @@ fn user_permission_check(
     pool: Pool<ConnectionManager<SqliteConnection>>,
 ) -> Result<(), (StatusCode, String)> {
     let user = database::get_user(user_id, pool)
-        .map_err(|err| (StatusCode::UNAUTHORIZED, "Not a Valid User {:?}".into()))?;
+        .map_err(|_err| (StatusCode::UNAUTHORIZED, "Not a Valid User {:?}".into()))?;
     if user.api_key != api_key {
         return Err((StatusCode::UNAUTHORIZED, "Incorrect API Key".into()));
     };
@@ -162,7 +162,7 @@ async fn hello_world() -> Json<Value> {
 }
 
 fn register_user(
-    state: State<state::GlobalStateWrapper>,
+    _state: State<state::GlobalStateWrapper>,
     user_name: String,
 ) -> Json<user::UserInfo> {
     let user = user::User::new(user_name);
@@ -174,11 +174,11 @@ fn request_permissions(
     state: State<state::GlobalStateWrapper>,
     user_id: String,
     api_key: String,
-    requested_permissions: user::Permissions,
+    _requested_permissions: user::Permissions,
 ) -> Result<Json<Value>, (StatusCode, String)> {
     let user_uuid =
         Uuid::parse_str(&user_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
-    let user = user_permission_check("", api_key, user_uuid, state.pool.clone());
+    let _user = user_permission_check("", api_key, user_uuid, state.pool.clone());
     // state
     // .registered_users
     // .get(&user_uuid)
@@ -204,12 +204,12 @@ fn request_permissions(
 }
 
 fn request_download(
-    state: State<state::GlobalStateWrapper>,
+    _state: State<state::GlobalStateWrapper>,
     user_id: String,
-    api_key: String,
-    llm_registry_entry: registry::LLMRegistryEntry,
+    _api_key: String,
+    _llm_registry_entry: registry::LLMRegistryEntry,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let user_uuid =
+    let _user_uuid =
         Uuid::parse_str(&user_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     // let user = state
     //     .registered_users
@@ -235,12 +235,12 @@ fn request_download(
 }
 
 fn request_load(
-    state: State<state::GlobalStateWrapper>,
+    _state: State<state::GlobalStateWrapper>,
     user_id: String,
-    api_key: String,
-    llm_id: String,
+    _api_key: String,
+    _llm_id: String,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let user_uuid =
+    let _user_uuid =
         Uuid::parse_str(&user_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     // let user = state
     //     .registered_users
@@ -266,12 +266,12 @@ fn request_load(
 }
 
 fn request_unload(
-    state: State<state::GlobalStateWrapper>,
+    _state: State<state::GlobalStateWrapper>,
     user_id: String,
-    api_key: String,
-    llm_id: String,
+    _api_key: String,
+    _llm_id: String,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let user_uuid =
+    let _user_uuid =
         Uuid::parse_str(&user_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     // let user = state
     //     .registered_users
@@ -299,10 +299,10 @@ fn request_unload(
 async fn load_llm(
     state: State<state::GlobalStateWrapper>,
     user_id: String,
-    api_key: String,
+    _api_key: String,
     llm_id: String,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let user_uuid =
+    let _user_uuid =
         Uuid::parse_str(&user_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     // let user = state
     //     .registered_users
@@ -313,11 +313,11 @@ async fn load_llm(
     let llm_uuid =
         Uuid::parse_str(&llm_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
 
-    if (state.activated_llms.contains_key(&llm_uuid)) {
+    if state.activated_llms.contains_key(&llm_uuid) {
         return Err((StatusCode::OK, "LLM Already Activated".into()));
     }
 
-    let manager_addr_copy = state.manager_addr.clone();
+    let _manager_addr_copy = state.manager_addr.clone();
 
     todo!()
 
@@ -353,12 +353,12 @@ async fn load_llm(
 }
 
 fn unload_llm(
-    state: State<state::GlobalStateWrapper>,
+    _state: State<state::GlobalStateWrapper>,
     user_id: String,
-    api_key: String,
-    llm_id: String,
+    _api_key: String,
+    _llm_id: String,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let user_uuid =
+    let _user_uuid =
         Uuid::parse_str(&user_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     // let user = state
     //     .registered_users
@@ -378,12 +378,12 @@ fn unload_llm(
 }
 
 fn download_llm(
-    state: State<state::GlobalStateWrapper>,
+    _state: State<state::GlobalStateWrapper>,
     user_id: String,
-    api_key: String,
-    llm_id: String,
+    _api_key: String,
+    _llm_id: String,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let user_uuid =
+    let _user_uuid =
         Uuid::parse_str(&user_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     // let user = state
     //     .registered_users
@@ -404,12 +404,12 @@ fn download_llm(
 }
 
 fn create_session(
-    state: State<state::GlobalStateWrapper>,
+    _state: State<state::GlobalStateWrapper>,
     user_id: String,
-    api_key: String,
-    llm_id: String,
+    _api_key: String,
+    _llm_id: String,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let user_uuid =
+    let _user_uuid =
         Uuid::parse_str(&user_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     // let user = state
     //     .registered_users
@@ -421,12 +421,12 @@ fn create_session(
 }
 
 fn create_session_id(
-    state: State<state::GlobalStateWrapper>,
+    _state: State<state::GlobalStateWrapper>,
     user_id: String,
-    api_key: String,
-    llm_id: String,
+    _api_key: String,
+    _llm_id: String,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let user_uuid =
+    let _user_uuid =
         Uuid::parse_str(&user_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     // let user = state
     //     .registered_users
@@ -454,13 +454,13 @@ struct LLMPreference {
 }
 
 fn create_session_flex(
-    state: State<state::GlobalStateWrapper>,
+    _state: State<state::GlobalStateWrapper>,
     user_id: String,
-    api_key: String,
-    filter: LLMFilter,
-    preference: LLMPreference,
+    _api_key: String,
+    _filter: LLMFilter,
+    _preference: LLMPreference,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let user_uuid =
+    let _user_uuid =
         Uuid::parse_str(&user_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     // let user = state
     //     .registered_users
@@ -472,13 +472,13 @@ fn create_session_flex(
 }
 
 fn prompt_session(
-    state: State<state::GlobalStateWrapper>,
+    _state: State<state::GlobalStateWrapper>,
     user_id: String,
-    api_key: String,
-    session_id: String,
-    prompt: String,
+    _api_key: String,
+    _session_id: String,
+    _prompt: String,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let user_uuid =
+    let _user_uuid =
         Uuid::parse_str(&user_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     // let user = state
     //     .registered_users
@@ -488,7 +488,7 @@ fn prompt_session(
     todo!()
 }
 
-pub fn build_server(global_state: state::GlobalStateWrapper) -> Result<(), String> {
+pub fn build_server(_global_state: state::GlobalStateWrapper) -> Result<(), String> {
     // Define your API routes
     // let app = Router::new(); //.with_state(global_state);
 

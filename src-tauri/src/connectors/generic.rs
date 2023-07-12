@@ -1,5 +1,5 @@
-use crate::connectors::{LLMEvent, LLMEventInternal, LLMInternalWrapper};
-use crate::llm::{LLMHistoryItem, LLMSession};
+use crate::connectors::{LLMEvent, LLMInternalWrapper};
+use crate::llm::{LLMSession};
 use crate::state;
 use crate::user::User;
 use diesel::prelude::*;
@@ -19,8 +19,8 @@ pub struct GenericAPIConnector {
 
 impl GenericAPIConnector {
     pub fn new(
-        uuid: Uuid,
-        data_path: PathBuf,
+        _uuid: Uuid,
+        _data_path: PathBuf,
         config: HashMap<String, Value>,
         user_settings: state::UserSettings,
         pool: Pool<ConnectionManager<SqliteConnection>>,
@@ -38,25 +38,25 @@ impl LLMInternalWrapper for GenericAPIConnector {
     // async fn call_llm(self: &mut Self, msg: String, session_params: HashMap<String, Value>, params: HashMap<String, Value>, user:User) -> Result<(Uuid, mpsc::Receiver<LLMEvent>), String> {
     // todo!()
     // }
-    async fn get_sessions(self: &Self, user: User) -> Result<Vec<LLMSession>, String> {
+    async fn get_sessions(self: &Self, _user: User) -> Result<Vec<LLMSession>, String> {
         todo!()
     }
 
     async fn create_session(
         self: &mut Self,
-        params: HashMap<String, Value>,
-        user: User,
+        _params: HashMap<String, Value>,
+        _user: User,
     ) -> Result<Uuid, String> {
         todo!()
     } //uuid
     async fn prompt_session(
         self: &mut Self,
-        session_id: Uuid,
-        msg: String,
-        params: HashMap<String, Value>,
-        user: User,
-        sender: mpsc::Sender<LLMEvent>,
-        cancellation: CancellationToken,
+        _session_id: Uuid,
+        _msg: String,
+        _params: HashMap<String, Value>,
+        _user: User,
+        _sender: mpsc::Sender<LLMEvent>,
+        _cancellation: CancellationToken,
     ) -> Result<(), String> {
         todo!()
     }

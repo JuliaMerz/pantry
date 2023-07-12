@@ -1,12 +1,11 @@
 use hyper::{
-    service::{make_service_fn, service_fn},
-    Body, Response, Server,
+    Server,
 };
 use hyperlocal::UnixServerExt;
-use tokio::net::{TcpListener, UnixListener};
+
 
 use axum::routing::Router;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
 
 // Bind the Unix socket
 
@@ -17,7 +16,7 @@ async fn flatten<T>(handle: tokio::task::JoinHandle<Result<T, hyper::Error>>) ->
     match handle.await {
         Ok(Ok(result)) => Ok(result),
         Ok(Err(err)) => Err(err.to_string()),
-        Err(err) => Err("handling failed".into()),
+        Err(_err) => Err("handling failed".into()),
     }
 }
 
@@ -38,7 +37,7 @@ pub async fn create_listeners(app: Router) -> Result<(), String> {
 
     // if one crashes we wanna die
     match tokio::try_join!(flatten(tcp_handle), flatten(unix_handle)) {
-        Ok(val) => {
+        Ok(_val) => {
             println!("Success?!");
         }
         Err(err) => {

@@ -2,19 +2,19 @@ use crate::connectors;
 use crate::llm;
 use crate::user::User;
 use connectors::LLMInternalWrapper;
-use dashmap::DashMap;
+
 use serde_json::Value;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
+
 use tiny_tokio_actor::*;
-use tokio::select;
+
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use uuid::Uuid;
 
-use super::LLMEvent;
+
 
 //src/connectors/llm_actor.rs
 
@@ -134,7 +134,7 @@ impl Handler<connectors::SysEvent, GetLLMSessionsMessage> for LLMActor {
     async fn handle(
         &mut self,
         msg: GetLLMSessionsMessage,
-        ctx: &mut ActorContext<connectors::SysEvent>,
+        _ctx: &mut ActorContext<connectors::SysEvent>,
     ) -> Result<Vec<llm::LLMSession>, String> {
         self.llm_internal.as_ref().get_sessions(msg.user).await
     }
@@ -144,7 +144,7 @@ impl Handler<connectors::SysEvent, GetLLMSessionsMessage> for LLMActor {
 impl Handler<connectors::SysEvent, IDMessage> for LLMActor {
     async fn handle(
         &mut self,
-        msg: IDMessage,
+        _msg: IDMessage,
         ctx: &mut ActorContext<connectors::SysEvent>,
     ) -> Result<String, String> {
         // Err("ba".into())
@@ -156,8 +156,8 @@ impl Handler<connectors::SysEvent, IDMessage> for LLMActor {
 impl Handler<connectors::SysEvent, StatusMessage> for LLMActor {
     async fn handle(
         &mut self,
-        msg: StatusMessage,
-        ctx: &mut ActorContext<connectors::SysEvent>,
+        _msg: StatusMessage,
+        _ctx: &mut ActorContext<connectors::SysEvent>,
     ) -> Result<String, String> {
         Err("ba".into())
     }
@@ -168,7 +168,7 @@ impl Handler<connectors::SysEvent, CreateSessionMessage> for LLMActor {
     async fn handle(
         &mut self,
         msg: CreateSessionMessage,
-        ctx: &mut ActorContext<connectors::SysEvent>,
+        _ctx: &mut ActorContext<connectors::SysEvent>,
     ) -> Result<Uuid, String> {
         self.llm_internal
             .create_session(msg.session_params, msg.user)
@@ -181,7 +181,7 @@ impl Handler<connectors::SysEvent, PromptSessionMessage> for LLMActor {
     async fn handle(
         &mut self,
         msg: PromptSessionMessage,
-        ctx: &mut ActorContext<connectors::SysEvent>,
+        _ctx: &mut ActorContext<connectors::SysEvent>,
     ) -> Result<(), String> {
         let result = self
             .llm_internal

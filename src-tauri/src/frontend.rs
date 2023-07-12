@@ -13,7 +13,7 @@ use chrono::Utc;
 use serde_json::Value;
 use std::collections::HashMap;
 use tauri::Manager;
-use tauri::{AppHandle, Wry};
+use tauri::{AppHandle};
 use uuid::Uuid;
 
 //
@@ -156,7 +156,7 @@ impl From<&llm::LLM> for LLMAvailable {
 
 #[tauri::command]
 pub async fn get_requests(
-    state: tauri::State<'_, state::GlobalStateWrapper>,
+    _state: tauri::State<'_, state::GlobalStateWrapper>,
 ) -> Result<CommandResponse<Vec<LLMRequest>>, String> {
     // let requests = state.get_requests().await;
     println!("received command get_reqs");
@@ -230,7 +230,7 @@ pub struct DownloadResponse {
 pub fn download_llm(
     llm_reg: registry::LLMRegistryEntry,
     app: tauri::AppHandle,
-    state: tauri::State<'_, state::GlobalStateWrapper>,
+    _state: tauri::State<'_, state::GlobalStateWrapper>,
 ) -> Result<CommandResponse<DownloadResponse>, String> {
     let uuid = Uuid::new_v4();
 
@@ -315,7 +315,7 @@ pub async fn load_llm(
     // let uuid = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
     let uuid = Uuid::parse_str(&uuid).map_err(|e| e.to_string())?;
     println!("Attempting to load an LLM");
-    if (state.activated_llms.contains_key(&uuid)) {
+    if state.activated_llms.contains_key(&uuid) {
         return Err("llm already loaded".into());
     }
 
@@ -343,7 +343,7 @@ pub async fn load_llm(
             state.activated_llms.insert(uuid, running);
             Ok(())
         }
-        Err(err) => Err("failed to launch {id} skipping".into()),
+        Err(_err) => Err("failed to launch {id} skipping".into()),
     }
 
     //if let Some(llm) = state.available_llms.get(&id) {
@@ -403,7 +403,7 @@ pub struct CreateSessionResponse {
 #[tauri::command]
 pub async fn get_sessions(
     llm_uuid: String,
-    app: AppHandle,
+    _app: AppHandle,
     state: tauri::State<'_, state::GlobalStateWrapper>,
 ) -> Result<CommandResponse<Vec<llm::LLMSession>>, String> {
     let uuid = Uuid::parse_str(&llm_uuid).map_err(|e| e.to_string())?;
@@ -426,7 +426,7 @@ pub async fn get_sessions(
 pub async fn create_session(
     llm_uuid: String,
     user_session_parameters: HashMap<String, Value>,
-    app: AppHandle,
+    _app: AppHandle,
     state: tauri::State<'_, state::GlobalStateWrapper>,
 ) -> Result<CommandResponse<CreateSessionResponse>, String> {
     println!(
@@ -523,7 +523,7 @@ pub async fn call_llm(
         uuid, prompt, user_parameters
     );
     if let Some(llm) = state.activated_llms.get(&uuid) {
-        let uuid = Uuid::new_v4();
+        let _uuid = Uuid::new_v4();
         match state.manager_addr.ask(llm_manager::PingMessage()).await {
             Ok(result) => println!("ping result: {:?}", result),
             Err(err) => println!("ping error: {:?}", err),
@@ -582,13 +582,13 @@ pub async fn call_llm(
 #[tauri::command]
 pub async fn unload_llm(
     uuid: String,
-    app: tauri::AppHandle,
+    _app: tauri::AppHandle,
     state: tauri::State<'_, state::GlobalStateWrapper>,
 ) -> Result<(), String> {
     let uuid = Uuid::parse_str(&uuid).map_err(|e| e.to_string())?;
     println!("Attempting to unload an LLM");
 
-    if let Some(running_llm) = state.activated_llms.remove(&uuid) {
+    if let Some(_running_llm) = state.activated_llms.remove(&uuid) {
         let unload_message = llm_manager::UnloadLLMActorMessage { uuid };
         let manager_addr = state.manager_addr.clone();
 
@@ -606,13 +606,13 @@ pub async fn unload_llm(
 #[tauri::command]
 pub async fn delete_llm(
     uuid: String,
-    app: tauri::AppHandle,
+    _app: tauri::AppHandle,
     state: tauri::State<'_, state::GlobalStateWrapper>,
 ) -> Result<(), String> {
     let uuid = Uuid::parse_str(&uuid).map_err(|e| e.to_string())?;
     println!("Attempting to delete an LLM");
 
-    if let Some(running_llm) = state.activated_llms.remove(&uuid) {
+    if let Some(_running_llm) = state.activated_llms.remove(&uuid) {
         let unload_message = llm_manager::UnloadLLMActorMessage { uuid };
         let manager_addr = state.manager_addr.clone();
 
@@ -629,7 +629,7 @@ pub async fn delete_llm(
     }
     match database::delete_llm(uuid, state.pool.clone()) {
         Ok(_) => Ok(()),
-        Err(err) => Err("Unable to find and delte llm".into()),
+        Err(_err) => Err("Unable to find and delte llm".into()),
     }
 }
 
@@ -637,7 +637,7 @@ pub async fn delete_llm(
 pub async fn interrupt_session(
     llm_uuid: String,
     session_id: String,
-    app: AppHandle,
+    _app: AppHandle,
     state: tauri::State<'_, state::GlobalStateWrapper>,
 ) -> Result<CommandResponse<bool>, String> {
     println!(

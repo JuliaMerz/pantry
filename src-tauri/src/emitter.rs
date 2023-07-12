@@ -1,5 +1,5 @@
 use crate::connectors::LLMEvent;
-use tauri::{AppHandle, Manager, Wry};
+use tauri::{AppHandle, Manager};
 use tokio::sync::mpsc;
 
 #[derive(Clone, serde::Serialize, Debug)]

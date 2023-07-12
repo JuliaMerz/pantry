@@ -2,12 +2,12 @@ use crate::connectors::llm_actor::LLMActor;
 use crate::connectors::SysEvent;
 use crate::state;
 use crate::{connectors, error::PantryError};
-use dashmap::DashMap;
+
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool};
 use serde_json::Value;
-use std::rc::Rc;
-use std::sync::{Arc, RwLock};
+
+
 use std::{collections::HashMap, path::PathBuf};
 use tiny_tokio_actor::*;
 use uuid::Uuid;
@@ -132,7 +132,7 @@ impl Handler<SysEvent, UnloadLLMActorMessage> for LLMManagerActor {
     ) -> Result<(), PantryError> {
         println!("Running unloadLLM handler");
 
-        if let Some(actor) = self.active_llm_actors.remove(&msg.uuid) {
+        if let Some(_actor) = self.active_llm_actors.remove(&msg.uuid) {
             ctx.stop_child(&msg.uuid.to_string()).await;
             Ok(())
         } else {
@@ -145,7 +145,7 @@ impl Handler<SysEvent, UnloadLLMActorMessage> for LLMManagerActor {
 impl Handler<SysEvent, PingMessage> for LLMManagerActor {
     async fn handle(
         &mut self,
-        msg: PingMessage,
+        _msg: PingMessage,
         _ctx: &mut ActorContext<SysEvent>,
     ) -> Result<Vec<String>, PantryError> {
         let mut ve: Vec<String> = Vec::new();

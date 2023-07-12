@@ -4,14 +4,14 @@ use crate::database_types::*;
 use crate::llm::{LLMHistoryItem, LLMSession};
 use crate::state;
 use crate::user::User;
-use chrono::{DateTime, Utc};
+use chrono::{Utc};
 use dashmap::DashMap;
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::{error::Error, fs::File};
+
 use tiny_tokio_actor::*;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
@@ -196,7 +196,7 @@ impl LLMInternalWrapper for LLMrsConnector {
         session_id: Uuid,
         prompt: String,
         params: HashMap<String, Value>,
-        user: User,
+        _user: User,
         sender: mpsc::Sender<LLMEvent>,
         cancellation: CancellationToken,
     ) -> Result<(), String> {
@@ -243,7 +243,7 @@ impl LLMInternalWrapper for LLMrsConnector {
             }
         }
 
-        let inf_params = llm::InferenceParameters {
+        let _inf_params = llm::InferenceParameters {
             n_threads: self.user_settings.n_thread,
             n_batch: self.user_settings.n_batch,
             sampler: Arc::new(sampler),
@@ -255,7 +255,7 @@ impl LLMInternalWrapper for LLMrsConnector {
             .lock()
             .map_err(|err| format!("failed to acquire lock: {:?}", err))?;
 
-        let mut llm_session_armed = session_wrapped
+        let llm_session_armed = session_wrapped
             .llm_session
             .as_ref()
             .write()
@@ -382,7 +382,7 @@ impl LLMInternalWrapper for LLMrsConnector {
             (None, None) => llm::TokenizerSource::Embedded,
         };
 
-        let now = std::time::Instant::now();
+        let _now = std::time::Instant::now();
 
         //llm.rs now supports infering model architecture, but we won't support it.
         let model_architecture: llm::ModelArchitecture = self
@@ -391,7 +391,7 @@ impl LLMInternalWrapper for LLMrsConnector {
             .ok_or("missing model architecture")?
             .to_string()
             .parse()
-            .map_err(|err| format!("unsupported model architecture"))?;
+            .map_err(|_err| format!("unsupported model architecture"))?;
 
         let mut model_params: llm::ModelParameters = Default::default();
         model_params.use_gpu = self.user_settings.use_gpu;
@@ -405,7 +405,7 @@ impl LLMInternalWrapper for LLMrsConnector {
                 model_params,
                 llm::load_progress_callback_stdout,
             )
-            .map_err(|err| "fuckup loading")?,
+            .map_err(|_err| "fuckup loading")?,
         );
 
         Ok(())

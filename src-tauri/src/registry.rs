@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::io::prelude::*;
-use std::sync::{Arc, RwLock};
+
 
 use crate::database;
 use crate::database_types::*;
@@ -11,8 +11,8 @@ use futures_util::StreamExt;
 use serde_json::Value;
 use std::fs::File;
 use std::str::FromStr;
-use tauri::{AppHandle, Manager, Wry};
-use tokio::sync::mpsc;
+use tauri::{Manager};
+
 use uuid::Uuid;
 
 // connectors/registry.rs
