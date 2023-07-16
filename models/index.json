@@ -1,8 +1,8 @@
 {
   "version": "0.0.1",
   "name": "system default",
-  "models": [
-    {
+  "models": {
+    "open_llama_7b-q5_1-ggjt": {
       "id": "open_llama_7b-q5_1-ggjt",
       "familyId": "llama",
       "organization": "",
@@ -39,5 +39,5 @@
       ],
       "userSessionParameters": []
     }
-  ]
+  }
 }
