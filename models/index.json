@@ -6,35 +6,37 @@
       "id": "open_llama_7b-q5_1-ggjt",
       "familyId": "llama",
       "organization": "",
-
       "name": "Open LLaMA GGML 7b",
       "url": "https://huggingface.co/rustformers/open-llama-ggml/resolve/main/open_llama_7b-q5_1-ggjt.bin",
       "homepage": "https://huggingface.co/rustformers/open-llama-ggml/",
       "connectorType": "llmrs",
-      "createThread": true,
+      "local": true,
       "description": "description of the thing",
       "requirements": "8GB Ram, spirit",
       "license": "Apache 2.0",
-      "tags": ["llama", "llm"],
-
+      "tags": [
+        "llama",
+        "llm"
+      ],
       "capabilities": {
         "TEXT_COMPLETION": 3,
         "CONVERSATION": 3,
         "FREE": 1
       },
-
       "config": {
-        "modelArchitecture":"llama"
+        "modelArchitecture": "llama"
       },
-
-
       "parameters": {
         "topK": 50,
         "temperature": 0.3
       },
       "sessionParameters": {},
-
-      "userParameters": ["top_k", "top_p", "repeat_penalty", "temperature"],
+      "userParameters": [
+        "top_k",
+        "top_p",
+        "repeat_penalty",
+        "temperature"
+      ],
       "userSessionParameters": []
     }
   ]
