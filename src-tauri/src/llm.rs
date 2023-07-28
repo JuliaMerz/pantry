@@ -1,7 +1,7 @@
 use crate::connectors;
 use crate::connectors::llm_actor;
-
 use crate::connectors::llm_manager;
+use crate::connectors::SysEvent;
 use crate::database;
 use crate::database_types::*;
 use crate::error::PantryError;
@@ -16,6 +16,7 @@ use chrono::Utc;
 use dashmap::DashMap;
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool};
+use futures::future::join_all;
 use rmp_serde;
 
 use serde_json::json;
@@ -24,7 +25,7 @@ use std::collections::HashMap;
 use std::fs::File;
 
 use std::path::PathBuf;
-use std::sync::{Arc};
+use std::sync::Arc;
 use tiny_tokio_actor::*;
 
 use tokio::sync::mpsc;
@@ -60,14 +61,22 @@ pub struct PromptSessionResponse {
     pub stream: mpsc::Receiver<connectors::LLMEvent>,
     pub parameters: HashMap<String, Value>,
 }
+
+#[derive(serde::Serialize)]
+pub struct LLMGetInfo {
+    pub status: String,
+}
 //Potentially unecessary wrapper class, written to give us space.
 #[async_trait]
 pub trait LLMWrapper {
-    fn get_info(&self) -> frontend::LLMStatus;
-    async fn status(&self) -> frontend::LLMStatus;
+    fn get_info(&self) -> LLMGetInfo;
+    async fn status(&self) -> LLMGetInfo;
     async fn ping(&self) -> Result<String, String>;
     async fn reload(&self) -> Result<(), PantryError>;
-    async fn get_sessions(&self, user: user::User) -> Result<Vec<LLMSession>, PantryError>;
+    async fn get_sessions(
+        &self,
+        user: user::User,
+    ) -> Result<Vec<(LLMSession, Vec<LLMHistoryItem>)>, PantryError>;
     async fn create_session(
         &self,
         params: HashMap<String, Value>,
@@ -93,12 +102,17 @@ pub trait LLMWrapper {
         user: user::User,
     ) -> Result<bool, PantryError>;
     fn into_llm_running(&self) -> frontend::LLMRunningInfo;
+    async fn unload_llm(
+        self,
+        llm_manager: ActorRef<connectors::SysEvent, llm_manager::LLMManagerActor>,
+    ) -> Result<(), String>;
 }
 
 // Implements LLMWrapper
 #[derive(Debug, serde::Serialize, serde::Deserialize, Queryable, Selectable, Insertable)]
 #[diesel(table_name = crate::schema::llm)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+// #[primary_key(uuid)]
 pub struct LLM {
     // Machine Info
     pub uuid: DbUuid,
@@ -125,7 +139,7 @@ pub struct LLM {
     pub url: String,
 
     // Functionality
-    pub create_thread: bool, // Is it not an API connector?
+    pub local: bool,                                  // Is it not an API connector?
     pub connector_type: connectors::LLMConnectorType, // which connector to use
     // Configs used by the connector for setup.
     pub config: DbHashMap, //Configs used by the connector
@@ -146,6 +160,7 @@ pub struct LLM {
     pub user_session_parameters: DbVec<String>,
 }
 
+#[derive(Debug)]
 pub struct LLMActivated {
     pub llm_id: Uuid,
 
@@ -162,10 +177,20 @@ pub struct LLMActivated {
     pub pool: Pool<ConnectionManager<SqliteConnection>>,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Queryable, Selectable, Insertable)]
-#[diesel(table_name = crate::schema::llm_history)]
-#[diesel(belongs_to(LLMSession))]
+#[derive(
+    Identifiable,
+    Debug,
+    Clone,
+    serde::Serialize,
+    serde::Deserialize,
+    Queryable,
+    Associations,
+    Selectable,
+    Insertable,
+)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+#[diesel(belongs_to(LLMSession, foreign_key=llm_session_id))]
+#[diesel(table_name = crate::schema::llm_history)]
 pub struct LLMHistoryItem {
     pub id: DbUuid,
     pub llm_session_id: DbUuid,
@@ -177,11 +202,21 @@ pub struct LLMHistoryItem {
     pub output: String,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Queryable, Selectable, Insertable)]
+#[derive(
+    Identifiable,
+    Debug,
+    Clone,
+    serde::Serialize,
+    serde::Deserialize,
+    Queryable,
+    Associations,
+    Selectable,
+    Insertable,
+)]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
 #[diesel(table_name = crate::schema::llm_session)]
 #[diesel(belongs_to(LLM, foreign_key=llm_uuid))]
 #[diesel(belongs_to(user::User))]
-#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
 pub struct LLMSession {
     pub id: DbUuid, //this is a uuid
     pub llm_uuid: DbUuid,
@@ -214,7 +249,7 @@ impl Clone for LLM {
 
             requirements: self.requirements.clone(),
 
-            create_thread: self.create_thread.clone(),
+            local: self.local.clone(),
             connector_type: self.connector_type.clone(), // assuming this type is also Clone
             config: self.config.clone(),
             model_path: self.model_path.clone(),
@@ -286,21 +321,21 @@ impl LLMActivated {
 
 #[async_trait]
 impl LLMWrapper for LLMActivated {
-    fn get_info(&self) -> frontend::LLMStatus {
+    fn get_info(&self) -> LLMGetInfo {
         match database::get_llm(self.llm_id, self.pool.clone()) {
-            Ok(llm) => frontend::LLMStatus {
+            Ok(llm) => LLMGetInfo {
                 status: format!(
                     "ID: {}, Name: {}, Description: {}",
                     llm.id, llm.name, llm.description
                 ),
             },
-            Err(err) => frontend::LLMStatus {
+            Err(err) => LLMGetInfo {
                 status: format!("Failed to get LLM status with {}", err.to_string(),),
             },
         }
     }
 
-    async fn status(&self) -> frontend::LLMStatus {
+    async fn status(&self) -> LLMGetInfo {
         todo!()
     }
 
@@ -318,23 +353,17 @@ impl LLMWrapper for LLMActivated {
         todo!()
     }
 
-    async fn get_sessions(&self, user: user::User) -> Result<Vec<LLMSession>, PantryError> {
+    async fn get_sessions(
+        &self,
+        user: user::User,
+    ) -> Result<Vec<(LLMSession, Vec<LLMHistoryItem>)>, PantryError> {
         println!(
             "Called get_sessions with LLM UUID {} and user {:?}",
             self.llm_id, user
         );
 
-        match self
-            .actor
-            .ask(llm_actor::GetLLMSessionsMessage { user: user.into() })
-            .await
-        {
-            Ok(result) => match result {
-                Ok(sessions) => Ok(sessions),
-                Err(err) => Err(PantryError::OtherFailure(err)),
-            },
-            Err(err) => Err(PantryError::ActorFailure(err)),
-        }
+        database::get_llm_sessions_user(user, self.pool.clone())
+            .map_err(|err| PantryError::DatabaseError(err))
     }
 
     async fn create_session(
@@ -625,5 +654,20 @@ impl LLMWrapper for LLMActivated {
 
     fn into_llm_running(&self) -> frontend::LLMRunningInfo {
         self.into()
+    }
+
+    async fn unload_llm(
+        self,
+        manager_addr: ActorRef<connectors::SysEvent, llm_manager::LLMManagerActor>,
+    ) -> Result<(), String> {
+        self.interrupts
+            .iter_mut()
+            .map(|pair| pair.value().iter().map(|val| val.cancel()).count())
+            .count();
+        let unload_message = llm_manager::UnloadLLMActorMessage {
+            uuid: self.llm.uuid.0,
+        };
+        manager_addr.ask(unload_message).await;
+        Ok(())
     }
 }

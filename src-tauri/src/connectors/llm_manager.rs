@@ -1,4 +1,4 @@
-use crate::connectors::llm_actor::LLMActor;
+use crate::connectors::llm_actor::{LLMActor, PreUnloadMessage};
 use crate::connectors::SysEvent;
 use crate::state;
 use crate::{connectors, error::PantryError};
@@ -6,7 +6,6 @@ use crate::{connectors, error::PantryError};
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool};
 use serde_json::Value;
-
 
 use std::{collections::HashMap, path::PathBuf};
 use tiny_tokio_actor::*;
@@ -24,8 +23,6 @@ pub struct LLMManagerActor {
 }
 
 impl Actor<SysEvent> for LLMManagerActor {}
-
-// (llm_id, create_thread, config)
 
 #[derive(Clone, Debug)]
 pub struct PingMessage();
@@ -132,7 +129,8 @@ impl Handler<SysEvent, UnloadLLMActorMessage> for LLMManagerActor {
     ) -> Result<(), PantryError> {
         println!("Running unloadLLM handler");
 
-        if let Some(_actor) = self.active_llm_actors.remove(&msg.uuid) {
+        if let Some(actor) = self.active_llm_actors.remove(&msg.uuid) {
+            actor.ask(PreUnloadMessage {}).await;
             ctx.stop_child(&msg.uuid.to_string()).await;
             Ok(())
         } else {

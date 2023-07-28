@@ -67,10 +67,14 @@ const LLMAvailableInfo: React.FC<LLMAvailableInfoProps> = ({
         aria-describedby="delete-confirmation-modal-description"
       >
             <ModalBox>
+          <Card className="delete-llm">
+            <CardContent>
           <Typography variant="h6" id="delete-confirmation-modal">Confirm Delete</Typography>
           <Typography variant="body1" id="delete-confirmation-modal-description">Are you sure you want to delete this item?</Typography>
           <Button variant="contained" onClick={handleConfirmDelete}>Yes</Button>
           <Button variant="outlined" onClick={handleCloseModal}>No</Button>
+            </CardContent>
+          </Card>
         </ModalBox>
       </Modal>
 

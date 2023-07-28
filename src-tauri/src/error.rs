@@ -1,9 +1,8 @@
-use quick_error::{quick_error};
+use diesel;
+use quick_error::quick_error;
 use tiny_tokio_actor::ActorError;
 
 use std::convert::From;
-
-
 
 quick_error! {
     #[derive(Debug)]
@@ -17,6 +16,10 @@ quick_error! {
         }
         OtherFailure(err: String) {
             display("Other Error: {:?}", err)
+            from()
+        }
+        DatabaseError(err: diesel::result::Error) {
+            display("Database Error: {:?}", err)
             from()
         }
     }
@@ -33,7 +36,6 @@ quick_error! {
 //     }
 
 // }
-
 
 // impl fmt::Display for PantryError {
 //     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

@@ -4,7 +4,7 @@ use tokio::sync::mpsc;
 
 #[derive(Clone, serde::Serialize, Debug)]
 #[serde(tag = "type")]
-pub enum EventType {
+pub enum EmitterEventPayload {
     LLMResponse(LLMEvent),
     DownloadProgress { progress: String },
     DownloadCompletion,
@@ -14,13 +14,13 @@ pub enum EventType {
 }
 
 #[derive(Clone, serde::Serialize, Debug)]
-pub struct EventPayload {
+pub struct EmitterEvent {
     pub stream_id: String,
-    pub event: EventType,
+    pub event: EmitterEventPayload,
 }
 
 // Defines the conversion function type
-type ConversionFunc<T> = fn(String, T) -> Result<EventPayload, String>;
+type ConversionFunc<T> = fn(String, T) -> Result<EmitterEvent, String>;
 
 pub async fn send_events<T: 'static>(
     channel: String,
@@ -41,9 +41,9 @@ pub async fn send_events<T: 'static>(
     }
 
     // Channel has closed, emit completion event
-    let payload = EventPayload {
+    let payload = EmitterEvent {
         stream_id: stream_id.to_string(),
-        event: EventType::ChannelClose,
+        event: EmitterEventPayload::ChannelClose,
     };
     // println!("Emitting event {:?} on {:?}", payload, channel);
     app.emit_all(&channel, &payload).unwrap();

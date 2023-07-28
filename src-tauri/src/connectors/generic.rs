@@ -1,5 +1,5 @@
 use crate::connectors::{LLMEvent, LLMInternalWrapper};
-use crate::llm::{LLMSession};
+use crate::llm::LLMSession;
 use crate::state;
 use crate::user::User;
 use diesel::prelude::*;
@@ -38,8 +38,8 @@ impl LLMInternalWrapper for GenericAPIConnector {
     // async fn call_llm(self: &mut Self, msg: String, session_params: HashMap<String, Value>, params: HashMap<String, Value>, user:User) -> Result<(Uuid, mpsc::Receiver<LLMEvent>), String> {
     // todo!()
     // }
-    async fn get_sessions(self: &Self, _user: User) -> Result<Vec<LLMSession>, String> {
-        todo!()
+    async fn maintenance(self: &mut Self) -> Result<(), String> {
+        Ok(())
     }
 
     async fn create_session(
@@ -63,6 +63,9 @@ impl LLMInternalWrapper for GenericAPIConnector {
     async fn load_llm(self: &mut Self) -> Result<(), String> {
         todo!()
     }
+    async fn pre_unload(self: &Self) -> Result<(), String> {
+        todo!()
+    } //called before shutdown
     async fn unload_llm(self: &Self) -> Result<(), String> {
         todo!()
     } //called by shutdown

@@ -4,7 +4,6 @@ import {useState, useEffect} from 'react';
 import {TextField, FormControlLabel, IconButton, Switch, CircularProgress, InputAdornment, Box, Typography, Stack} from '@mui/material';
 import {invoke} from '@tauri-apps/api/tauri';
 import SaveIcon from '@mui/icons-material/Save';
-import CheckCircleIcon from '@material-ui/icons/CheckCircle';
 
 
 type UserSettings = {

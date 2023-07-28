@@ -1,11 +1,16 @@
 // src/pages/DownloadableLLMs.tsx
 
-import React, { useEffect, useState } from 'react';
+import React, {useEffect, useState} from 'react';
 import {
   Box,
+  InputAdornment,
   Typography,
+  Card,
+  CardContent,
+  Divider,
   Grid,
   Select,
+  InputLabel,
   MenuItem,
   Checkbox,
   FormControlLabel,
@@ -14,16 +19,20 @@ import {
   Modal,
   TextField,
 } from '@mui/material';
-import { LinearProgress } from '@mui/material';
+import {SelectChangeEvent} from "@mui/material";
 
-import { ModalBox } from '../theme';
+import SearchIcon from '@mui/icons-material/Search';
+import {LinearProgress} from '@mui/material';
 
-import { Store } from "tauri-plugin-store-api";
-import { fetch } from '@tauri-apps/api/http';
-import { listen } from '@tauri-apps/api/event'
-import { invoke } from '@tauri-apps/api/tauri';
+import {ModalBox} from '../theme';
 
-import { LLMRegistryRegistry, LLMRegistry, LLMRegistryEntry, toLLMRegistryEntry, LLMDownloadState, LLMRegistryEntryConnector, LLMAvailable, toLLMAvailable } from '../interfaces';
+import {Store} from "tauri-plugin-store-api";
+import {fetch} from '@tauri-apps/api/http';
+import {listen} from '@tauri-apps/api/event'
+import {invoke} from '@tauri-apps/api/tauri';
+import {validateRegistryEntry, addRegistry, getRegistries, addRegistryEntry, downloadLLM} from '../registryHelpers';
+
+import {LLMRegistryRegistry, LLMRegistry, LLMRegistryEntry, toLLMRegistryEntry, LLMDownloadState, LLMRegistryEntryConnector, LLMAvailable, toLLMAvailable, produceEmptyRegistryEntry} from '../interfaces';
 import LLMDownloadableInfo from '../components/LLMDownloadableInfo';
 
 const LLM_INFO_SOURCE = "https://raw.githubusercontent.com/JuliaMerz/pantry/master/models/index.json";
@@ -36,25 +45,25 @@ const NEW_REG_HELPER_TEXT = {
 };
 
 const NEW_REGISTRY_HELPER_TEXT = {
-    id: 'Technical Id, like openai-ada-high-temp-1',
-    name: 'Human readable name',
-    familyId: 'Family Id, ex "openai" or "llama"',
-    organization: 'Human readable organization. Could be a github user.',
-    homepage: 'URL for more information, like a HuggingFace page.',
-    connector: 'Connector pantry needs to use to run this. When in doubt, probably GGML.',
-    createThread: 'Yes if the model runs locally.',
-    description: 'Human readable description of the model.',
-    requirements:'Human readable—how much ram? GPU? etc.',
-    license: 'MIT/Apache 2.0/etc.',
-    parameters: 'Parameters set by the config, for ex hardcoded temperature.',
-    userParameters: 'Parameters settable by the user when they call this model.',
-    sessionParameters: 'Session Parameters set by the config—there\'s very few or none of these.',
-    userSessionParameters: 'User configurable session parameters.',
-    capabilities: 'Rated capabilities-Find the standard capabilities on the pantry github, and apply ratings to them. Capabilities left empty will be stored as "unrated". 0 represents "not capable".',
-    tags: 'Comma separated tags, ex: "openai, gpt, conversational, remote"',
-    url: 'Download URL for the model. Should be a ggml file atm.',
-    config: 'Config to run the model. See pantry/github readme for details on what\'s required.',
-  }
+  id: 'Technical Id, like openai-ada-high-temp-1',
+  name: 'Human readable name',
+  familyId: 'Family Id, ex "openai" or "llama"',
+  organization: 'Human readable organization. Could be a github user.',
+  homepage: 'URL for more information, like a HuggingFace page.',
+  connector: 'Connector pantry needs to use to run this. When in doubt, probably GGML.',
+  local: 'Yes if the model runs locally.',
+  description: 'Human readable description of the model.',
+  requirements: 'Human readable—how much ram? GPU? etc.',
+  license: 'MIT/Apache 2.0/etc.',
+  parameters: 'Preset parameters, for ex hardcoded temperature. Overrides system defaults.',
+  userParameters: 'User overwritable parameters (at calltime, via UI or API).',
+  sessionParameters: 'Session Parameters set by the config—there\'s very few or none of these.',
+  userSessionParameters: 'User overwritable session parameters.',
+  capabilities: 'Rated capabilities-Find the standard capabilities on the pantry github, and apply ratings to them. Capabilities left empty will be stored as "unrated". 0 represents "not capable".',
+  tags: 'Comma separated tags, ex: "openai, gpt, conversational, remote"',
+  url: 'Download URL for the model. Should be a ggml file atm.',
+  config: 'Special config to run the model. Usually unnecessary—see the readme.',
+}
 
 interface ProgressState {
   [key: string]: {progress: string, error: boolean};
@@ -64,198 +73,70 @@ function DownloadableLLMs() {
   const [downloadableLLMs, setDownloadableLLMs] = useState<[LLMRegistryEntry, LLMRegistry][]>([]);
   const [availableLLMs, setAvailableLLMs] = useState<LLMAvailable[]>([]);
   const [registries, setRegistries] = useState<any>([]);
+  const [llmFilter, setLLMFilter] = useState("");
 
-  async function getRegistries(): Promise<LLMRegistryRegistry> {
-    return store.get(REGISTRIES_STORAGE_KEY).
-      then(async (registries:any) => {
-        if (!registries) {
-          console.log("Didn't find registries, adding");
-          // would do setRegistries([]) but it's the default
-          const local: LLMRegistry = {
-            id: "local",
-            url: "local",
-            models: []
-          }
-          await store.set(REGISTRIES_STORAGE_KEY, {local: local})
-          await store.save()
-          let defaultReg: LLMRegistry = {
-            id: 'default',
-            url: LLM_INFO_SOURCE,
-            models: []
-          }
-          await addRegistry(defaultReg.id, defaultReg.url);
-          //We should hit the else case this time
-          return getRegistries();
-        } else {
-          console.log("Found registries, returning");
-          return registries;
-        }
-    }).catch(async (err:any) => {
-          console.log("Didn't find registries, adding");
-          // would do setRegistries([]) but it's the default
-          await store.set(REGISTRIES_STORAGE_KEY, {local: []})
-          await store.save()
-          let defaultReg: LLMRegistry = {
-            id: 'default',
-            url: LLM_INFO_SOURCE,
-            models: []
-          }
-          await addRegistry(defaultReg.id, defaultReg.url);
-          //We should hit the else case this time
-          return getRegistries();
-    });
+  // Special fields for special handling
 
-  }
-
-  const store = new Store(".local.dat");
-  useEffect(() => {
-
-  });
-
-  async function addRegistry(id: string, url: string) {
-    const newReg:LLMRegistry = {
-      id: id,
-      url: url,
-      models: [],
-    };
-    console.log("Running add registry");
-
-    // Fetch data from the new URL and extract models
-    const response = await fetch(url);
-    console.log(response);
-    const remoteData = response.data as any;
-    const models = remoteData.models as LLMRegistryEntry[];
-    console.log("models:", models);
-
-
-    // Convert each model to an LLMRegistryEntry and add it to the registryEntries array
-    for (const model of models) {
-      console.log("pushign a model");
-      const registryEntry:LLMRegistryEntry = await toLLMRegistryEntry(model);
-      newReg.models.push(registryEntry);
-    }
-
-
-    // Save the updated registryEntries to the store
-
-    // Save the updated registries list
-    const registries:LLMRegistryRegistry = await getRegistries()
-    if (!registries[url]) {
-      registries[url] = newReg;
-    } else {
-      // This registry already exists, we need to either
-      if (registries[url].id !== id)
-        throw Error("Registry url already exists, but type doesn't match up. Aborting.")
-      registries[url] = newReg;
-    }
-
-    console.log("Updating store registries");
-    await store.set(REGISTRIES_STORAGE_KEY, registries);
-    await store.save();
-
-    setRegistries(registries)
-  }
-
-  const refreshData = async () => {
-
-    const downloadableLLMs: [LLMRegistryEntry, LLMRegistry][] = [];
-
-    getRegistries().then(async (regs) => {
-      const result: {data: LLMAvailable[]} = await invoke<{data: LLMAvailable[]}>('available_llms');
-      const llmAvail = result.data.map(toLLMAvailable);
-      setAvailableLLMs(llmAvail);
-
-      for (let regKey of Object.keys(regs)) {
-        console.log("reg key {}, regs  models {}", regKey, regs[regKey], llmAvail)
-              // Filter out already downloaded models based on id and backendUuid
-        const filteredModels = regs[regKey].models.filter((regEntry) =>
-          !llmAvail.some(llm => llm.id === regEntry.id && llm.uuid === regEntry.backendUuid)
-        );
-        const removedModels = regs[regKey].models.filter((regEntry) =>
-          llmAvail.some(llm => llm.id === regEntry.id && llm.uuid === regEntry.backendUuid)
-        );
-
-        removedModels.map((value) => {
-          // If we have them in llm_available then their download is actually complete already!
-          value.downloadState = LLMDownloadState.Downloaded
-        })
-
-        downloadableLLMs.push(...(filteredModels.map((reg_entry): [LLMRegistryEntry, LLMRegistry] => [reg_entry, regs[regKey]])));
-      }
-      console.log("registries:", regs);
-      setRegistries(regs);
-      console.log("Updating store registries");
-      await store.set(REGISTRIES_STORAGE_KEY, regs);
-      await store.save();
-
-      // downloadableLLMs.push(...(regs[regKey].models.map((reg_entry): [LLMRegistryEntry, LLMRegistry] => [reg_entry, regs[regKey]])));
-      setDownloadableLLMs(downloadableLLMs);
-    });
-
-  }
+  // used for the llmrs connector
+  const [modelArchitecture, setModelArchitecture] = useState('llama');
 
   useEffect(() => {
-    refreshData()
+    refreshData(false)
 
-//     const fetchDownloadableLLMs = async () => {
-//       try {
-//         const response = await fetch(LLM_INFO_SOURCE);
-//         console.log(response);
-//         const data = await response.data
-//         setDownloadableLLMs((data as any).models);
-//       } catch (err) {
-//         console.error(err);
-//       }
-//     };
+    //     const fetchDownloadableLLMs = async () => {
+    //       try {
+    //         const response = await fetch(LLM_INFO_SOURCE);
+    //         console.log(response);
+    //         const data = await response.data
+    //         setDownloadableLLMs((data as any).models);
+    //       } catch (err) {
+    //         console.error(err);
+    //       }
+    //     };
 
   }, []);
 
-    const [isRegistryEntryModalOpen, setRegistryEntryModalOpen] = useState(false);
-    const [isRegistryModalOpen, setRegistryModalOpen] = useState(false);
+  const [isRegistryEntryModalOpen, setRegistryEntryModalOpen] = useState(false);
+  const [isRegistryModalOpen, setRegistryModalOpen] = useState(false);
 
 
 
-    const produceEmptyRegistryEntry = (): LLMRegistryEntry => { return {
-    id: '',
-    name: '',
-    familyId: '',
-    organization: '',
-    homepage: '',
-    downloadState: LLMDownloadState.NotDownloaded,
-    backendUuid: '',
-    connectorType: LLMRegistryEntryConnector.Ggml, // provide a default value based on your LLMRegistryEntryConnector enum
-    createThread: false,
-    description: '',
-    requirements:'',
-    license: '',
-    parameters: {}, // initialize with default LLMRegistry array
-    userParameters: [],
-    sessionParameters: {}, // initialize with default LLMRegistry array
-    userSessionParameters: [],
-    capabilities: {}, // initialize with default capabilities object
-    tags: [],
-    url: '',
-    config: {}, // initialize with default config object
-  }}
   const [newRegistryEntry, setNewRegistryEntry] = useState<LLMRegistryEntry>(produceEmptyRegistryEntry());
   const [newRegistry, setNewRegistry] = useState<{id: string, url: string}>({id: '', url: ''});
+  const [newRegistryEntryErrors, setNewRegistryEntryErrors] = useState<{[key: string]: string}>({});
+  const [newRegistryErrors, setNewRegistryErrors] = useState<{[key: string]: string}>({});
+  //
+  // Create dynamic fields
+  type StringField = 'config' | 'parameters' | 'sessionParameters';
+  type NumericField = 'capabilities';
+
+  const [dynamicKeyValuePairs, setDynamicKeyValuePairs] = useState<Record<StringField | NumericField, [string, string][]>>({
+    config: [['', '']],
+    parameters: [['', '']],
+    sessionParameters: [['', '']],
+    capabilities: Object.entries(newRegistryEntry.capabilities).filter(
+      ([key, value], index) => key !== '' || value !== ''
+    )
+  });
+
 
 
   const validateNewRegistryEntry = (): boolean => {
     return Object.keys(newRegistryEntryErrors).length == 0
   }
+
+  const handleAddRegistry = async () => {
+    addRegistry(newRegistry.id, newRegistry.url).then((registries: LLMRegistryRegistry) => {
+      setRegistries(registries);
+      setNewRegistry({id: '', url: ''});
+    });
+  }
+
   const handleAddRegistryEntry = async () => {
     if (validateNewRegistryEntry()) {
       // Fetch the local registry and add the new entry
-      const localRegistry:any = await store.get("local") || {};
-      if (!localRegistry.entries) {
-        localRegistry.entries = [];
-      }
-      localRegistry.entries.push(newRegistryEntry);
 
-      // Save the updated local registry to the store
-      await store.set("local", localRegistry);
-      await store.save();
+      addRegistryEntry(newRegistryEntry, 'local').then(() => refreshData(false));
 
       // Close the modal and reset the newRegistryEntry state
       setRegistryEntryModalOpen(false);
@@ -266,13 +147,45 @@ function DownloadableLLMs() {
     }
   };
 
+  const refreshData = async (forceRefresh: boolean) => {
 
-  const [newRegistryEntryErrors, setNewRegistryEntryErrors] = useState<{ [key: string]: string }>({});
-  const [newRegistryErrors, setNewRegistryErrors] = useState<{ [key: string]: string }>({});
+    const downloadableLLMs: [LLMRegistryEntry, LLMRegistry][] = [];
+
+    getRegistries(forceRefresh).then(async (regs) => {
+      const result: {data: LLMAvailable[]} = await invoke<{data: LLMAvailable[]}>('available_llms');
+      const llmAvail = result.data.map(toLLMAvailable);
+      setAvailableLLMs(llmAvail);
+
+      for (let regKey of Object.keys(regs)) {
+        console.log("reg key {}, regs  models {}", regKey, regs[regKey], llmAvail)
+        // Filter out already downloaded models based on id and backendUuid
+        const filteredModels = Object.entries(regs[regKey].models).filter((regEntry) =>
+          !llmAvail.some(llm => llm.id === regEntry[1].id && llm.uuid === regEntry[1].backendUuid)
+        ).map(([key, value]) => value);
+        const removedModels = Object.entries(regs[regKey].models).filter(([key, regEntry]) =>
+          llmAvail.some(llm => llm.id === regEntry.id && llm.uuid === regEntry.backendUuid)
+        ).map(([key, value]) => value);
+
+        removedModels.map((value) => {
+          // If we have them in llm_available then their download is actually complete already!
+          value.downloadState = LLMDownloadState.Downloaded
+        })
+
+        downloadableLLMs.push(...(filteredModels.map((reg_entry): [LLMRegistryEntry, LLMRegistry] => [reg_entry, regs[regKey]])));
+      }
+      setRegistries(regs);
+
+      // downloadableLLMs.push(...(regs[regKey].models.map((reg_entry): [LLMRegistryEntry, LLMRegistry] => [reg_entry, regs[regKey]])));
+      setDownloadableLLMs(downloadableLLMs);
+    });
+
+  }
+
+
   const capitalizeFirstLetter = (string: string) => string.charAt(0).toUpperCase() + string.slice(1);
 
   const handleCheckboxInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const { name } = event.target;
+    const {name} = event.target;
     setNewRegistryEntry({
       ...newRegistryEntry,
       [name]: !newRegistryEntry[name as keyof LLMRegistryEntry]
@@ -282,7 +195,7 @@ function DownloadableLLMs() {
 
 
   const handleRegistryInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = event.target;
+    const {name, value} = event.target;
 
     // Updating the newRegistryEntry state
     setNewRegistry({
@@ -297,14 +210,14 @@ function DownloadableLLMs() {
         [name]: `${capitalizeFirstLetter(name)} is required.`,
       });
     } else {
-      const { [name]: _, ...remainingErrors } = newRegistryErrors; // Remove error
+      const {[name]: _, ...remainingErrors} = newRegistryErrors; // Remove error
       setNewRegistryErrors(remainingErrors);
     }
   };
 
 
-  const handleRegistryEntryInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = event.target;
+  const handleRegistryEntryInputChange = (event: SelectChangeEvent | React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const {name, value} = event.target;
 
     // Updating the newRegistryEntry state
     setNewRegistryEntry({
@@ -312,57 +225,55 @@ function DownloadableLLMs() {
       [name]: value,
     });
 
-    // Performing validation
-    if (value.trim() === '') {
-      setNewRegistryEntryErrors({
-        ...newRegistryEntryErrors,
-        [name]: `${capitalizeFirstLetter(name)} is required.`,
-      });
-    } else {
-      const { [name]: _, ...remainingErrors } = newRegistryEntryErrors; // Remove error
-      setNewRegistryEntryErrors(remainingErrors);
-    }
+    // Use imported error function from here on
+    setNewRegistryErrors(validateRegistryEntry({
+      ...newRegistryEntry,
+      [name]: value,
+    }));
   };
 
-
-  // Create dynamic fields
-  type StringField = 'config' | 'parameters' | 'sessionParameters';
-  type NumericField = 'capabilities';
-
-  const [dynamicKeyValuePairs, setDynamicKeyValuePairs] = useState<Record<StringField|NumericField, [string, string][]>>({
-    config: [['', '']],
-    parameters: [['', '']],
-    sessionParameters: [['', '']],
-    capabilities: [['', '']],
-  });
 
 
   // Handle changes for dynamic fields
 
   const handleStringKeyValueChange = (event: React.ChangeEvent<HTMLInputElement>, index: number, fieldType: StringField, keyOrValue: number) => {
-    const newPairs = { ...dynamicKeyValuePairs };
+    const newPairs = {...dynamicKeyValuePairs};
     newPairs[fieldType][index][keyOrValue] = event.target.value;
+    let len = newPairs[fieldType].length;
+    newPairs[fieldType] = newPairs[fieldType].filter(
+      ([key, value], index) => key !== '' || value !== '' || index == len - 1
+    );
     setDynamicKeyValuePairs(newPairs);
 
-    const newEntry = { ...newRegistryEntry };
+    const newEntry = {...newRegistryEntry};
     newEntry[fieldType] = Object.fromEntries(newPairs[fieldType].filter(([key, value]) => key !== '' || value !== ''));
+    console.log("newEntry", newEntry, newEntry[fieldType]);
     setNewRegistryEntry(newEntry);
   };
 
-  const handleNumericKeyValueChange = (event: React.ChangeEvent<HTMLInputElement>, index: number, fieldType: NumericField, keyOrValue: number) => {
-    const newPairs = { ...dynamicKeyValuePairs };
+  //TODO: if there's a numbers field that isn't capabilites this will protest
+  const handleNumberButReallyCapabilitiesChange = (event: React.ChangeEvent<HTMLInputElement>, index: number, fieldType: NumericField, keyOrValue: number) => {
+    const newPairs = {...dynamicKeyValuePairs};
     newPairs[fieldType][index][keyOrValue] = event.target.value
+    let len = newPairs[fieldType].length;
+    newPairs[fieldType] = newPairs[fieldType].filter(
+      ([key, value], index) => key !== '' || value !== '' || index == len - 1
+    );
     setDynamicKeyValuePairs(newPairs);
 
-    const newEntry = { ...newRegistryEntry };
-    newEntry[fieldType] = Object.fromEntries(newPairs[fieldType].filter(([key, value]) => key !== '' || value !== '').map(([key, value])=> [key, parseFloat(value)]));
+    const newEntry = {...newRegistryEntry};
+    newEntry[fieldType] = Object.fromEntries(newPairs[fieldType].filter(([key, value]) => key !== '' || value !== '').map(([key, value]) => [key, parseFloat(value)])) as {assistant: number, coding: number, writer: number};
+    console.log("newEntry", newEntry, newEntry[fieldType]);
     setNewRegistryEntry(newEntry);
   };
 
 
   // Automatically add new rows
   useEffect(() => {
-    (Object.keys(dynamicKeyValuePairs) as StringField[]|NumericField[]).forEach((fieldType: StringField|NumericField) => {
+    (Object.keys(dynamicKeyValuePairs) as StringField[] | NumericField[]).forEach((fieldType: StringField | NumericField) => {
+      //for now don't grow capabiliteis
+      if (fieldType == "capabilities")
+        return
       const lastPair = dynamicKeyValuePairs[fieldType][dynamicKeyValuePairs[fieldType].length - 1];
       if (lastPair[0] !== '' || lastPair[1] !== '') {
         setDynamicKeyValuePairs(prev => ({
@@ -375,180 +286,347 @@ function DownloadableLLMs() {
 
 
 
-  const beginDownload = (llmId: string, regUrl: string, index:number, uuid: string) => {
-    store.get(REGISTRIES_STORAGE_KEY)
-      .then(async (out) => {
-        console.log(out);
-        // We get the registries back
-        const registries: {[id: string]: LLMRegistry} = out as {[id: string]: LLMRegistry}
-        const targetModel = registries[regUrl].models.find((value) => value.id == llmId) as LLMRegistryEntry;
-        targetModel.backendUuid = uuid;
-        targetModel.downloadState = LLMDownloadState.Downloading;
+  const beginDownload = async (llm: LLMRegistryEntry, regUrl: string) => {
+    // We should be able to do this with just saving then refresh_data
+    await downloadLLM(llm, regUrl);
 
-        setDownloadableLLMs(prevState => {
-          const newState = [...prevState];
-          newState[index] = [targetModel, newState[index][1]]; // Updating the specific item at index
-          return newState;
-        });
-
-        setRegistries((prevRegistries:{[id: string]:LLMRegistry}) => {
-          const newRegistries = {...prevRegistries};
-          newRegistries[regUrl] = {...newRegistries[regUrl], models: newRegistries[regUrl].models.map((model: LLMRegistryEntry) =>
-            model.id === llmId ? targetModel : model // Updating the specific model in the registry
-          )};
-          store.set(REGISTRIES_STORAGE_KEY, newRegistries);
-          store.save()
-          return newRegistries;
-        });
-      });
-
+    refreshData(false);
   }
 
+
+  // const beginDownload = (llmId: string, regUrl: string, index: number, uuid: string) => {
+  // store.get(REGISTRIES_STORAGE_KEY)
+  //   .then(async (out) => {
+  //     console.log(out);
+  //     // We get the registries back
+  //     const registries: {[id: string]: LLMRegistry} = out as {[id: string]: LLMRegistry}
+  //     const targetModel = registries[regUrl].models.find((value) => value.id == llmId) as LLMRegistryEntry;
+  //     targetModel.backendUuid = uuid;
+  //     targetModel.downloadState = LLMDownloadState.Downloading;
+
+  //     setDownloadableLLMs(prevState => {
+  //       const newState = [...prevState];
+  //       newState[index] = [targetModel, newState[index][1]]; // Updating the specific item at index
+  //       return newState;
+  //     });
+
+  //     setRegistries((prevRegistries: {[id: string]: LLMRegistry}) => {
+  //       const newRegistries = {...prevRegistries};
+  //       newRegistries[regUrl] = {
+  //         ...newRegistries[regUrl], models: newRegistries[regUrl].models.map((model: LLMRegistryEntry) =>
+  //           model.id === llmId ? targetModel : model // Updating the specific model in the registry
+  //         )
+  //       };
+  //       store.set(REGISTRIES_STORAGE_KEY, newRegistries);
+  //       store.save()
+  //       return newRegistries;
+  //     });
+  //   });
+
+
   const completeDownload = (llmId: string, regUrl: string) => {
-    refreshData();
+    refreshData(false);
   };
 
-    return (
+  const renderSpecialFields = () => {
+    if (newRegistryEntry.connectorType == LLMRegistryEntryConnector.LLMrs) {
+      return (
+        <Box sx={{
+          display: 'flex',
+          flexDirection: 'row',
+          padding: 1,
+          margin: 2,
+          alignItems: 'center',
+          border: 1,
+          borderRadius: 1,
+          borderColor: 'grey.300',
+
+        }}>
+          <Typography>
+            Model Architectue
+          </Typography>
+          <Select
+            value={modelArchitecture}
+            onChange={(event) => {setModelArchitecture(event.target.value)}}
+            name="modelArchitecture"
+            sx={{
+              marginX: 2
+            }}
+          >
+            <MenuItem value="llama">LLaMA</MenuItem>
+            <MenuItem value="bloom">BLOOM</MenuItem>
+            <MenuItem value="gpt2">GPT-2</MenuItem>
+            <MenuItem value="gptj">GPT-J</MenuItem>
+            <MenuItem value="neox">GPT-NeoX</MenuItem>
+          </Select></Box>
+      )
+    }
+  }
+
+  const applySpecialFields = (llmRegEntry: LLMRegistryEntry) => {
+    if (newRegistryEntry.connectorType == LLMRegistryEntryConnector.LLMrs) {
+      llmRegEntry.config.model_architecture = modelArchitecture;
+    }
+  }
+
+  const renderField = (key: keyof LLMRegistryEntry) => {
+    switch (key) {
+      case "backendUuid":
+      case "downloadState":
+        return null;
+      case "capabilities":
+        return (
+          <Box>
+            <Typography variant="subtitle2">{NEW_REGISTRY_HELPER_TEXT[key as keyof typeof NEW_REGISTRY_HELPER_TEXT]}</Typography>
+            {Object.keys(dynamicKeyValuePairs[key as NumericField]).map((subKey, index) => (
+              <Grid container item xs={12} key={index}>
+                <Grid item xs={6}>
+                  <TextField
+                    error={!!newRegistryEntryErrors[`${key}Key${index}`]}
+                    helperText={newRegistryEntryErrors[`${key}Value${index}`]}
+                    fullWidth
+                    value={dynamicKeyValuePairs[key as NumericField][index][0]}
+                    label={`${capitalizeFirstLetter(key)} Key ${index + 1}`}
+                    onChange={(e: any) => handleNumberButReallyCapabilitiesChange(e, index, key as NumericField, 0)}
+                    disabled
+                  />
+                </Grid>
+                <Grid item xs={6}>
+                  <TextField
+                    error={!!newRegistryEntryErrors[`${key}Value${index}`]}
+                    helperText={newRegistryEntryErrors[`${key}Value${index}`]}
+                    fullWidth
+                    value={dynamicKeyValuePairs[key as NumericField][index][1]}
+                    label={`${capitalizeFirstLetter(key)} Value ${index + 1}`}
+                    onChange={(e: any) => handleNumberButReallyCapabilitiesChange(e, index, key as NumericField, 1)}
+                  />
+                </Grid>
+              </Grid>
+            ))}
+          </Box>
+        )
+
+        break;
+
+      // Boolean
+      case "local":
+        return (
+          <Box>
+            <FormControlLabel labelPlacement="start" control={<Checkbox
+              checked={newRegistryEntry[key as keyof LLMRegistryEntry] as boolean}
+              onChange={handleCheckboxInputChange}
+              name={key}
+              color="primary"
+            />} label={capitalizeFirstLetter(key)} />
+          </Box>
+        )
+
+      //doubles
+      case "config":
+      case "parameters":
+      case "sessionParameters":
+        return (
+          <Box>
+            <Typography variant="subtitle2">{NEW_REGISTRY_HELPER_TEXT[key as keyof typeof NEW_REGISTRY_HELPER_TEXT]}</Typography>
+            {Object.keys(dynamicKeyValuePairs[key as StringField]).map((subKey, index) => (
+              <Grid container item xs={12} key={index}>
+                <Grid item xs={6}>
+                  <TextField
+                    error={!!newRegistryEntryErrors[`${key}Key${index}`]}
+                    helperText={newRegistryEntryErrors[`${key}Key${index}`]}
+                    fullWidth
+                    value={dynamicKeyValuePairs[key as StringField][index][0]}
+                    label={`${capitalizeFirstLetter(key)} Key ${index + 1}`}
+                    onChange={(e: any) => handleStringKeyValueChange(e, index, key as StringField, 0)}
+                  />
+                </Grid>
+                <Grid item xs={6}>
+                  <TextField
+                    error={!!newRegistryEntryErrors[`${key}Value${index}`]}
+                    helperText={newRegistryEntryErrors[`${key}Value${index}`]}
+                    fullWidth
+                    value={dynamicKeyValuePairs[key as StringField][index][1]}
+                    label={`${capitalizeFirstLetter(key)} Value ${index + 1}`}
+                    onChange={(e: any) => handleStringKeyValueChange(e, index, key as StringField, 1)}
+                  />
+                </Grid>
+              </Grid>
+            ))}
+          </Box>
+        );
+        break
+
+
+      case "connectorType":
+        return (
+          <Box>
+            <FormControlLabel labelPlacement="start" control={
+              <Select
+                value={newRegistryEntry[key as keyof LLMRegistryEntry] as string}
+                onChange={handleRegistryEntryInputChange}
+                name={key}
+                sx={{
+                  marginX: 2
+
+                }}
+              >
+                <MenuItem value="llmrs">llmrs</MenuItem>
+                <MenuItem value="openai">OpenAI</MenuItem>
+              </Select>
+            } label={capitalizeFirstLetter(key)} />
+            {renderSpecialFields()}
+            <Divider role="presentation">If you intend to share publicly, please also fill in...</Divider>
+          </Box>
+        );
+        break;
+
+      case "userParameters":
+      case "userSessionParameters":
+        return (
+          <Box>
+            <TextField
+              error={!!newRegistryEntryErrors[key]}
+              helperText={newRegistryEntryErrors[key] ? newRegistryEntryErrors[key] : NEW_REGISTRY_HELPER_TEXT[key as keyof typeof NEW_REGISTRY_HELPER_TEXT]}
+              fullWidth
+              name={key}
+              label={capitalizeFirstLetter(key)}
+              value={newRegistryEntry[key as keyof LLMRegistryEntry]}
+              onChange={handleRegistryEntryInputChange}
+            />
+          </Box>);
+        break;
+
+
+
+      default:
+        return (
+          <Box>
+            <TextField
+              error={!!newRegistryEntryErrors[key]}
+              helperText={newRegistryEntryErrors[key] ? newRegistryEntryErrors[key] : NEW_REGISTRY_HELPER_TEXT[key as keyof typeof NEW_REGISTRY_HELPER_TEXT]}
+              fullWidth
+              name={key}
+              label={capitalizeFirstLetter(key)}
+              value={newRegistryEntry[key as keyof LLMRegistryEntry]}
+              onChange={handleRegistryEntryInputChange}
+            />
+            {key == "name" && false ? <Divider role="presentation">If you intend to share publicly, please also fill in...</Divider> : null}
+            {key == "license" ? <Divider role="presentation">Advanced Config </Divider> : null}
+          </Box>);
+        break;
+    }
+  }
+
+
+  // {
+  //   ["config", "parameters", "sessionParameters"].map((key) =>
+
+  //     key !== "config" && key !== "parameters" && key !== "capabilities" && key !== "backendUuid" && key !== "downloadState" && key !== "sessionParameters" && (typeof newRegistryEntry[key as keyof LLMRegistryEntry] === "boolean" ? (
+  //     ): (
+  //       ))))
+  // }
+  // {
+  //   ["capabilities"].map((key) =>
+  //             }
+  // {
+  //   ["config", "parameters", "sessionParameters"].map((key) =>
+  //             )
+  // }
+  // }
+  const handleLLMFilterChange = (event: any) => {
+    setLLMFilter(event.target.value);
+  }
+
+  return (
     <Box>
       <Typography variant="h3">Downloadable Large Language Models</Typography>
 
-      <Box sx={{ my: 2 }}>
-        <Button variant="contained" color="primary" onClick={() => setRegistryModalOpen(true)}>
-          Add Registry
-        </Button>
+      <Box sx={{my: 2}}>
         <Button variant="contained" color="primary" onClick={() => setRegistryEntryModalOpen(true)}>
           Add Registry Entry
         </Button>
-        <Button variant="contained" color="primary" onClick={refreshData}>
-          Refresh
+        <Button variant="contained" color="primary" onClick={() => refreshData(false)}>
+          Refresh Data
+        </Button>
+        <Button variant="outlined" color="primary" onClick={() => setRegistryModalOpen(true)}>
+          Add Registry
+        </Button>
+        <Button variant="outlined" color="primary" onClick={() => refreshData(true)}>
+          Force Refresh Remote
         </Button>
       </Box>
 
-      {downloadableLLMs.map((pair, index) => (
+      <Box>
+        <TextField size="small" label="Filter" onChange={handleLLMFilterChange} value={llmFilter} InputProps={{
+          startAdornment: (
+            <InputAdornment position="start">
+              <SearchIcon />
+            </InputAdornment>
+          ),
+        }}
+        />
+      </Box>
+
+      {downloadableLLMs.filter((pair, index) => {
+        console.log(llmFilter);
+        return pair[0].id.includes(llmFilter) || pair[0].name.includes(llmFilter) || pair[0].familyId.includes(llmFilter) || pair[0].license.includes(llmFilter) || pair[0].organization.includes(llmFilter);
+
+      }).map((pair, index) => (
         <LLMDownloadableInfo
           key={pair[0].id}
           llm={pair[0]}
           registry={pair[1]}
-          beginDownload={(uuid) => {beginDownload(pair[0].id, pair[1].url, index, uuid)}}
-          completeDownload={() => { completeDownload(pair[0].id, pair[1].url)}}
+          beginDownload={() => {beginDownload(pair[0], pair[1].url)}}
+          completeDownload={() => {completeDownload(pair[0].id, pair[1].url)}}
         />
       ))}
 
       <Modal open={isRegistryModalOpen} onClose={() => setRegistryModalOpen(false)}>
         <ModalBox>
-          <Typography variant="h5">Add a new Registry</Typography>
-            {Object.keys(newRegistry).map((key) =>
-              <TextField
-                error={!!newRegistryErrors[key]}
-                helperText={newRegistryErrors[key] ? newRegistryErrors[key] : NEW_REG_HELPER_TEXT[key as keyof typeof NEW_REG_HELPER_TEXT]}
-                fullWidth
-                name={key}
-                label={capitalizeFirstLetter(key)}
-                value={newRegistry[key as keyof typeof newRegistry]}
-                onChange={handleRegistryInputChange}
-              />
-            )}
+          <Card className="registry-form">
+            <CardContent>
+              <Typography variant="h5">Add a new Registry</Typography>
+              {Object.keys(newRegistry).map((key) =>
+                <TextField
+                  error={!!newRegistryErrors[key]}
+                  helperText={newRegistryErrors[key] ? newRegistryErrors[key] : NEW_REG_HELPER_TEXT[key as keyof typeof NEW_REG_HELPER_TEXT]}
+                  fullWidth
+                  name={key}
+                  label={capitalizeFirstLetter(key)}
+                  value={newRegistry[key as keyof typeof newRegistry]}
+                  onChange={handleRegistryInputChange}
+                />
+              )}
+              <Button variant="contained" color="primary" onClick={handleAddRegistry}>
+                Submit
+              </Button>
+
+            </CardContent>
+          </Card>
         </ModalBox>
       </Modal>
 
       <Modal open={isRegistryEntryModalOpen} onClose={() => setRegistryEntryModalOpen(false)}>
         <ModalBox>
-          <Typography variant="h5">Add a new Registry Entry</Typography>
-          <Grid item xs={12}>
-            {Object.keys(newRegistryEntry).map((key) => (
-              key !== "config" && key !== "parameters" && key !== "capabilities" && key !== "backendUuid" && key !== "downloadState" && (typeof newRegistryEntry[key as keyof LLMRegistryEntry] === "boolean" ? (
-                <FormControlLabel labelPlacement="start" control={<Checkbox
-                  checked={newRegistryEntry[key as keyof LLMRegistryEntry] as boolean}
-                  onChange={handleCheckboxInputChange}
-                  name={key}
-                  color="primary"
-                />} label={capitalizeFirstLetter(key)} />
-              ) : key === "connector" ? (
-                <FormControlLabel labelPlacement="start" control={
-                <Select
-                  value={newRegistryEntry[key as keyof LLMRegistryEntry]}
-                  onChange={handleRegistryEntryInputChange}
-                  name={key}
-                >
-                  <MenuItem value="ggml">GGML</MenuItem>
-                  <MenuItem value="openai">OpenAI</MenuItem>
-                </Select>
-                } label={capitalizeFirstLetter(key)} />
-              ) : (
-                <TextField
-                  error={!!newRegistryEntryErrors[key]}
-                  helperText={newRegistryEntryErrors[key] ? newRegistryEntryErrors[key] : NEW_REGISTRY_HELPER_TEXT[key as keyof typeof NEW_REGISTRY_HELPER_TEXT]}
-                  fullWidth
-                  name={key}
-                  label={capitalizeFirstLetter(key)}
-                  value={newRegistryEntry[key as keyof LLMRegistryEntry]}
-                  onChange={handleRegistryEntryInputChange}
-                />
-              ))))}
-            {["capabilities"].map((key) =>
-              <Box>
-                <Typography variant="subtitle2">{NEW_REGISTRY_HELPER_TEXT[key as keyof typeof NEW_REGISTRY_HELPER_TEXT]}</Typography>
-                {Object.keys(dynamicKeyValuePairs[key as NumericField]).map((subKey, index) => (
-                  <Grid container item xs={12} key={index}>
-                    <Grid item xs={6}>
-                      <TextField
-                        error={!!newRegistryEntryErrors[`${key}Key${index}`]}
-                        helperText={newRegistryEntryErrors[`${key}Value${index}`]}
-                        fullWidth
-                        value={dynamicKeyValuePairs[key as NumericField][index][0]}
-                        label={`${capitalizeFirstLetter(key)} Key ${index + 1}`}
-                        onChange={(e:any) => handleNumericKeyValueChange(e, index, key as NumericField, 0)}
-                      />
-                    </Grid>
-                    <Grid item xs={6}>
-                      <TextField
-                        error={!!newRegistryEntryErrors[`${key}Value${index}`]}
-                        helperText={newRegistryEntryErrors[`${key}Value${index}`]}
-                        fullWidth
-                        value={dynamicKeyValuePairs[key as NumericField][index][1]}
-                        label={`${capitalizeFirstLetter(key)} Value ${index + 1}`}
-                        onChange={(e:any) => handleNumericKeyValueChange(e, index, key as NumericField, 1)}
-                      />
-                    </Grid>
-                  </Grid>
+          <Card className="registry-entry-form">
+            <CardContent>
+              <Typography variant="h5">Add a new Registry Entry</Typography>
+              <Grid item xs={12}>
+                {Object.keys(newRegistryEntry).map((key) => (
+                  <Box
+                    sx={{
+                      padding: 0.5
+                    }}>{renderField(key as keyof LLMRegistryEntry)}
+                  </Box>
                 ))}
-              </Box>
-            )}
 
-            {["config", "parameters", "sessionParameters"].map((key) =>
-              <Box>
-                <Typography variant="subtitle2">{NEW_REGISTRY_HELPER_TEXT[key as keyof typeof NEW_REGISTRY_HELPER_TEXT]}</Typography>
-                {Object.keys(dynamicKeyValuePairs[key as StringField]).map((subKey, index) => (
-                  <Grid container item xs={12} key={index}>
-                    <Grid item xs={6}>
-                      <TextField
-                        error={!!newRegistryEntryErrors[`${key}Key${index}`]}
-                        helperText={newRegistryEntryErrors[`${key}Key${index}`]}
-                        fullWidth
-                        value={dynamicKeyValuePairs[key as StringField][index][0]}
-                        label={`${capitalizeFirstLetter(key)} Key ${index + 1}`}
-                        onChange={(e:any) => handleStringKeyValueChange(e, index, key as StringField, 0)}
-                      />
-                    </Grid>
-                    <Grid item xs={6}>
-                      <TextField
-                        error={!!newRegistryEntryErrors[`${key}Value${index}`]}
-                        helperText={newRegistryEntryErrors[`${key}Value${index}`]}
-                        fullWidth
-                        value={dynamicKeyValuePairs[key as StringField][index][1]}
-                        label={`${capitalizeFirstLetter(key)} Value ${index + 1}`}
-                        onChange={(e:any) => handleStringKeyValueChange(e, index, key as StringField, 1)}
-                      />
-                    </Grid>
-                  </Grid>
-                ))}
-              </Box>
-            )}
-          </Grid>
+              </Grid>
 
-          <Button variant="contained" color="primary" onClick={handleAddRegistryEntry}>
-            Submit
-          </Button>
+              <Button variant="contained" color="primary" onClick={handleAddRegistryEntry}>
+                Submit
+              </Button>
+            </CardContent>
+          </Card>
         </ModalBox>
       </Modal>
     </Box>

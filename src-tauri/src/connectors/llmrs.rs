@@ -4,12 +4,17 @@ use crate::database_types::*;
 use crate::llm::{LLMHistoryItem, LLMSession};
 use crate::state;
 use crate::user::User;
-use chrono::{Utc};
+use bincode::{deserialize_from, serialize_into};
+use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool};
+use llm::InferenceSession;
 use serde_json::Value;
 use std::collections::HashMap;
+use std::fs;
+use std::fs::File;
+use std::io::Write;
 use std::path::PathBuf;
 
 use tiny_tokio_actor::*;
@@ -42,7 +47,7 @@ pub struct LLMrsConnector {
     pub config: HashMap<String, Value>,
     model_path: PathBuf,
     model: RwLock<Option<Box<dyn llm::Model>>>,
-    sessions: DashMap<Uuid, LLMrsSession>,
+    loaded_sessions: DashMap<Uuid, LLMrsSession>,
     data_path: PathBuf,
     uuid: Uuid,
     user_settings: state::UserSettings,
@@ -60,54 +65,94 @@ impl LLMrsConnector {
     ) -> LLMrsConnector {
         let mut path = data_path.clone();
         path.push(format!("llmrs-{}", uuid.to_string()));
+        fs::create_dir_all(path.clone());
         let mut conn = LLMrsConnector {
             config,
             uuid,
-            data_path,
+            data_path: path,
             model_path,
             model: RwLock::new(None),
-            sessions: DashMap::new(),
+            loaded_sessions: DashMap::new(),
             user_settings,
             pool,
         };
-        conn.deserialize_sessions();
         conn
     }
 
-    //TODO: This is expensive as all hell, we should be doing this by individual sessions
-    // Utility functions to serialize and deserialize sessions
-    pub fn serialize_sessions(&self) -> Result<(), Box<dyn std::error::Error>> {
-        return Ok(()); //We skip serializing because inferencesessionref is missing in llmrs.
-                       // let mut file = File::create(&self.data_path)?;
+    fn rehydrate_session(&self, llm_sess: LLMSession) -> Result<Uuid, String> {
+        println!("Rehyrdatring session {:?}", llm_sess.id);
+        let mut path = self.data_path.clone();
+        path.push(llm_sess.id.0.to_string());
 
-        // let vec: Vec<LLMrsSessionSerial> = self.sessions.into_iter().map(|sess| {
-        //     let sess_guard = sess.1.lock().unwrap();
-        //     // We're immediately taking ownership and writing, and we're in the mutex,
-        //     // see https://github.com/rustformers/llm/blob/9123171ab1aa436fcfa45b9aaef90211534f9fdb/crates/llm-base/src/inference_session.rs#L540C1-L565C1
-        //     let session_snapshot = unsafe {sess_guard.model_session.get_snapshot()};
-        //     let llm_session = sess_guard.llm_session.clone();
+        let mut reader =
+            File::open(path).map_err(|err| format!("Failed to deserialize to file: {:?}", err))?;
 
-        //     LLMrsSessionSerial {
-        //         session_snapshot,
-        //         llm_session,
-        //     }
-        // }).collect();
+        let snapshot = deserialize_from(reader)
+            .map_err(|err| format!("Failed to deserialize to file: {:?}", err))?;
+        // self.model.write().unwrap().ok_or("model not activated, cannot rehydrate".into())?;
+        let model_tmp = self
+            .model
+            .read()
+            .map_err(|err| format!("failed to get read lock on model {:?}", err))?;
 
-        // rmp_serde::encode::write_named(&mut file, &vec)?;
-        // Ok(())
+        let model = model_tmp
+            .as_ref()
+            .expect("Model is not available (opt is None)");
+
+        let inference = InferenceSession::from_snapshot(snapshot, model.as_ref())
+            .map_err(|err| format!("Failed to rehydrate model: {:?}", err))?;
+        let uuid = llm_sess.id.0.clone();
+
+        let new_session = LLMrsSession {
+            model_session: Arc::new(Mutex::new(inference)),
+            llm_session: Arc::new(RwLock::new(llm_sess)),
+        };
+
+        self.loaded_sessions.insert(uuid.clone(), new_session);
+
+        Ok(uuid.clone())
     }
 
-    pub fn deserialize_sessions(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        return Ok(());
-        //we skip deserializing because we skipped serializing
-        // let mut file = File::open(&self.data_path)?;
-        // let sessions_serial: Vec<LLMrsSessionSerial> = rmp_serde::decode::from_read(&file)?;
-        // let sessions: Vec<LLMrsSession> = sessions_serial.into_iter().map(|sess| sess.into()).collect();
-        // self.sessions = DashMap::new();
-        // sessions.into_iter().map(|sess| {
-        //     self.sessions.insert(sess.llm_session.id, Arc::new(Mutex::new(sess)));
-        // });
-        // Ok(())
+    fn dehydrate_session(&self, llmrs_sess: LLMrsSession) -> Result<(), String> {
+        let mut raw = llmrs_sess.model_session.lock().unwrap();
+        println!("dehydrating session");
+
+        // Safety: you can't use the model while get_snapshot is alive
+        // The lock above us ensures this, and we're going to drop the model after anyway
+        unsafe {
+            let snapshot = raw.get_snapshot();
+            let mut path = self.data_path.clone();
+            path.push(llmrs_sess.llm_session.read().unwrap().id.0.to_string());
+            let mut writer = File::create(path)
+                .map_err(|err| format!("Failed to serialize to file: {:?}", err))?;
+            let serialized = serialize_into(writer, &snapshot)
+                .map_err(|err| format!("Failed to serialize to file: {:?}", err))?;
+        }
+
+        Ok(())
+    }
+
+    // Due to a combination of DashMap and borrow checking we can't actually
+    // return get(&session_id). So instead we return sessionid and the end
+    // user needs to use it. This, ironically, is _less_ typesafe but whatever.
+    fn get_session_check(&self, session_id: &Uuid) -> Result<Uuid, String> {
+        println!("Checking session {}", session_id.to_string());
+        // if let Some(sess) = self.loaded_sessions.get(&session_id) {
+        //     return Ok(sess.value());
+        // }
+        if let Some(sess) = self.loaded_sessions.get(&session_id) {
+            return Ok(session_id.clone());
+        }
+
+        println!("Getting session from DB");
+        let session: LLMSession = database::get_llm_session(session_id.clone(), self.pool.clone())
+            .map_err(|err| format!("Database failure, probably not found: {:?}", err))?;
+
+        if session.llm_uuid.0 == self.uuid {
+            return self.rehydrate_session(session);
+        } else {
+            return Err("unable to find session".into());
+        }
     }
 }
 
@@ -148,14 +193,47 @@ impl LLMInternalWrapper for LLMrsConnector {
     //         Err(e) => Err(e)
     //     }
     // }
-    async fn get_sessions(self: &Self, user: User) -> Result<Vec<LLMSession>, String> {
-        let sesss: Vec<LLMSession> = self
-            .sessions
-            .iter()
-            .filter(|ff| ff.value().llm_session.read().unwrap().user_id == user.id)
-            .map(|ff| ff.value().llm_session.as_ref().read().unwrap().clone())
-            .collect();
-        return Ok(sesss);
+    // async fn get_sessions(self: &Self, user: User) -> Result<Vec<LLMSession>, String> {
+    //     let sesss: Vec<LLMSession> = self
+    //         .sessions
+    //         .iter()
+    //         .filter(|ff| ff.value().llm_session.read().unwrap().user_id == user.id)
+    //         .map(|ff| ff.value().llm_session.as_ref().read().unwrap().clone())
+    //         .collect();
+    //     return Ok(sesss);
+    // }
+    async fn maintenance(&mut self) -> Result<(), String> {
+        println!("HERE: HERE: Running maintenance check...");
+        if self.loaded_sessions.len() > 1 {
+            // if self.loaded_sessions.len() > self.user_settings.preferred_active_sessions {
+            let mut llm_list: Vec<(Uuid, DateTime<Utc>)> = self
+                .loaded_sessions
+                .iter()
+                .map(|pair| {
+                    (
+                        pair.key().clone(),
+                        pair.value().llm_session.read().unwrap().last_called.clone(),
+                    )
+                })
+                .collect();
+
+            llm_list.sort_by(|a, b| a.1.cmp(&b.1));
+            // get the last uuid
+            let uuid = llm_list.pop().ok_or("list empty")?.0;
+            let llmrs_sess = self
+                .loaded_sessions
+                .remove(&uuid)
+                .expect("we just grabbed this key")
+                .1;
+
+            self.dehydrate_session(llmrs_sess)?;
+            println!(
+                "now have this loaded session struct: {:?}",
+                self.loaded_sessions.len()
+            );
+        }
+
+        Ok(())
     }
 
     async fn create_session(
@@ -176,17 +254,23 @@ impl LLMInternalWrapper for LLMrsConnector {
 
         let new_session = LLMrsSession {
             model_session: Arc::new(Mutex::new(inference)),
-            llm_session: Arc::new(RwLock::new(LLMSession {
-                id: DbUuid(uuid),
-                llm_uuid: DbUuid(self.uuid.clone()), // replace with actual llm_uuid
-                user_id: user.id,                    // replace with actual user_id
-                started: Utc::now(),
-                last_called: Utc::now(),
-                session_parameters: DbHashMap(params),
-            })),
+            llm_session: Arc::new(RwLock::new(
+                database::save_new_llm_session(
+                    LLMSession {
+                        id: DbUuid(uuid),
+                        llm_uuid: DbUuid(self.uuid.clone()), // replace with actual llm_uuid
+                        user_id: user.id,                    // replace with actual user_id
+                        started: Utc::now(),
+                        last_called: Utc::now(),
+                        session_parameters: DbHashMap(params),
+                    },
+                    self.pool.clone(),
+                )
+                .map_err(|err| format!("Database failure: {:?}", err))?,
+            )),
         };
 
-        self.sessions.insert(uuid, new_session);
+        self.loaded_sessions.insert(uuid, new_session);
 
         Ok(uuid)
     } //uuid
@@ -248,8 +332,13 @@ impl LLMInternalWrapper for LLMrsConnector {
             n_batch: self.user_settings.n_batch,
             sampler: Arc::new(sampler),
         };
-        let session_wrapped = self.sessions.get(&session_id).ok_or("session not found")?;
+        self.get_session_check(&session_id)?;
+        let session_wrapped = self
+            .loaded_sessions
+            .get(&session_id)
+            .expect("missing session");
         let mut model_armed = session_wrapped
+            .value()
             .model_session
             .as_ref()
             .lock()
@@ -274,7 +363,8 @@ impl LLMInternalWrapper for LLMrsConnector {
             output: "".into(),
         };
 
-        let new_item = database::save_new_llm_history(new_item, self.pool.clone())?;
+        let new_item = database::save_new_llm_history(new_item, self.pool.clone())
+            .map_err(|err| format!("Database failure: {:?}", err))?;
 
         println!("Attempting to infer");
         // Call the llm
@@ -326,7 +416,6 @@ impl LLMInternalWrapper for LLMrsConnector {
                             println!("Sent an event from llmrs for {:?}", print_clone);
                         });
 
-                        // TODO: send a prompt complete here
                         let cancel = cancellation.is_cancelled();
                         let update_item =
                             database::append_token(update_item, t, cancel, self.pool.clone())
@@ -352,6 +441,19 @@ impl LLMInternalWrapper for LLMrsConnector {
                             true => Ok(llm::InferenceFeedback::Halt),
                             false => Ok(llm::InferenceFeedback::Continue),
                         }
+                    }
+
+                    llm::InferenceResponse::EotToken => {
+                        print!("Received EOT from LLM");
+                        let session_clone = llm_session_armed.clone();
+
+                        let update_item =
+                            database::get_llm_history(item_id, self.pool.clone()).unwrap();
+                        let update_item =
+                            database::append_token(update_item, "".into(), true, self.pool.clone())
+                                .unwrap();
+
+                        Ok(llm::InferenceFeedback::Halt)
                     }
                     _ => match cancellation.is_cancelled() {
                         // TODO: mark complete here
@@ -411,7 +513,23 @@ impl LLMInternalWrapper for LLMrsConnector {
         Ok(())
     }
 
-    async fn unload_llm(self: &Self) -> Result<(), String> {
-        todo!()
+    async fn pre_unload(self: &Self) -> Result<(), String> {
+        let uuids: Vec<Uuid> = self
+            .loaded_sessions
+            .iter()
+            .map(|pair| pair.key().clone())
+            .collect();
+
+        for uuid in uuids {
+            self.dehydrate_session(self.loaded_sessions.remove(&uuid).expect("beep").1);
+        }
+
+        println!("successfully unloaded {:?}", self.uuid);
+
+        //we don't remove because we're about to drain
+        Ok(())
     } //called by shutdown
+    async fn unload_llm(self: &Self) -> Result<(), String> {
+        Ok(())
+    }
 }

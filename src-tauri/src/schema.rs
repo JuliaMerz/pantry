@@ -17,7 +17,7 @@ diesel::table! {
         tags -> Text,
         requirements -> Text,
         url -> Text,
-        create_thread -> Bool,
+        local -> Bool,
         connector_type -> Text,
         config -> Text,
         model_path -> Nullable<Text>,

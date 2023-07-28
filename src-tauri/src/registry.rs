@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::io::prelude::*;
 
-
+use crate::connectors;
 use crate::database;
 use crate::database_types::*;
 use crate::emitter;
@@ -11,34 +11,11 @@ use futures_util::StreamExt;
 use serde_json::Value;
 use std::fs::File;
 use std::str::FromStr;
-use tauri::{Manager};
+use tauri::Manager;
 
 use uuid::Uuid;
 
 // connectors/registry.rs
-
-#[derive(Debug, PartialEq, serde::Serialize, serde::Deserialize, Clone)]
-#[serde(rename_all = "lowercase")]
-pub enum LLMRegistryEntryConnector {
-    Ggml,
-    LLMrs,
-    OpenAI,
-    GenericAPI,
-}
-
-impl FromStr for LLMRegistryEntryConnector {
-    type Err = ();
-
-    fn from_str(input: &str) -> Result<LLMRegistryEntryConnector, Self::Err> {
-        match input {
-            "ggml" => Ok(LLMRegistryEntryConnector::Ggml),
-            "llmrs" => Ok(LLMRegistryEntryConnector::LLMrs),
-            "api" => Ok(LLMRegistryEntryConnector::GenericAPI),
-            "openai" => Ok(LLMRegistryEntryConnector::OpenAI),
-            _ => Err(()),
-        }
-    }
-}
 
 #[derive(Debug, PartialEq, serde::Deserialize)]
 pub enum LLMRegistryEntryInstallStep {
@@ -68,7 +45,7 @@ pub struct LLMRegistryEntry {
     pub description: String,
     pub homepage: String,
 
-    pub capabilities: HashMap<String, isize>,
+    pub capabilities: HashMap<String, i32>,
     pub tags: Vec<String>,
     pub requirements: String,
 
@@ -76,8 +53,8 @@ pub struct LLMRegistryEntry {
     pub url: String,
 
     pub config: HashMap<String, Value>,
-    pub create_thread: bool,
-    pub connector_type: LLMRegistryEntryConnector,
+    pub local: bool,
+    pub connector_type: connectors::LLMConnectorType,
 
     pub parameters: HashMap<String, Value>,
     pub user_parameters: Vec<String>,
@@ -132,9 +109,9 @@ pub async fn download_and_write_llm(
             println!("Downloading {} at {}", llm_reg.id, percent);
             app.emit_all(
                 "downloads",
-                emitter::EventPayload {
+                emitter::EmitterEvent {
                     stream_id: stream_id.clone(),
-                    event: emitter::EventType::DownloadProgress {
+                    event: emitter::EmitterEventPayload::DownloadProgress {
                         progress: percent.to_string(),
                     },
                 },
@@ -144,9 +121,9 @@ pub async fn download_and_write_llm(
             // otherwise, just emit the downloaded amount.
             app.emit_all(
                 "downloads",
-                emitter::EventPayload {
+                emitter::EmitterEvent {
                     stream_id: stream_id.clone(),
-                    event: emitter::EventType::DownloadProgress {
+                    event: emitter::EmitterEventPayload::DownloadProgress {
                         progress: downloaded.to_string(),
                     },
                 },
@@ -154,7 +131,7 @@ pub async fn download_and_write_llm(
         }
     }
 
-    let state: tauri::State<'_, state::GlobalState> = app.state();
+    let state: tauri::State<'_, state::GlobalStateWrapper> = app.state();
 
     let new_llm: llm::LLM = llm::LLM {
         id: llm_reg.id.clone(),
@@ -176,8 +153,8 @@ pub async fn download_and_write_llm(
 
         requirements: llm_reg.requirements.clone(),
 
-        create_thread: llm_reg.create_thread.clone(),
-        connector_type: llm_reg.connector_type.clone().into(), // assuming this type is also Clone
+        local: llm_reg.local.clone(),
+        connector_type: llm_reg.connector_type.clone(), // assuming this type is also Clone
         config: DbHashMap(llm_reg.config.clone()),
         parameters: DbHashMap(llm_reg.parameters.clone()),
         user_parameters: DbVec(llm_reg.user_parameters.clone()),
@@ -191,9 +168,9 @@ pub async fn download_and_write_llm(
             println!("Successful download, llms serialized");
             app.emit_all(
                 "downloads",
-                emitter::EventPayload {
+                emitter::EmitterEvent {
                     stream_id: stream_id.clone(),
-                    event: emitter::EventType::DownloadCompletion {},
+                    event: emitter::EmitterEventPayload::DownloadCompletion {},
                 },
             )?;
         }
@@ -201,9 +178,9 @@ pub async fn download_and_write_llm(
             println!("Failed to save download");
             app.emit_all(
                 "downloads",
-                emitter::EventPayload {
+                emitter::EmitterEvent {
                     stream_id: stream_id.clone(),
-                    event: emitter::EventType::DownloadError {
+                    event: emitter::EmitterEventPayload::DownloadError {
                         message: "failed to save llm".into(),
                     },
                 },
@@ -212,9 +189,9 @@ pub async fn download_and_write_llm(
     }
     app.emit_all(
         "downloads",
-        emitter::EventPayload {
+        emitter::EmitterEvent {
             stream_id: stream_id.clone(),
-            event: emitter::EventType::ChannelClose {},
+            event: emitter::EmitterEventPayload::ChannelClose {},
         },
     )?;
     Ok(())

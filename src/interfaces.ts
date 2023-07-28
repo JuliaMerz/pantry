@@ -1,5 +1,12 @@
 // src/interfaces.ts
+import {sanitizeUrl} from "@braintree/sanitize-url";
 
+
+interface LLMCapabilities {
+  assistant: number,
+  coding: number,
+  writer: number,
+}
 interface LLM {
   id: string;
   familyId: string;
@@ -10,7 +17,7 @@ interface LLM {
   license: string;
   homepage: string,
 
-  capabilities: {[id: string]: number};
+  capabilities: LLMCapabilities,
   requirements: string;
   tags: string[];
 
@@ -20,7 +27,7 @@ interface LLM {
   config: {[id: string]: string};
   connectorType: string;
   //backend info we maybe don't need
-  createThread: boolean;
+  local: boolean;
 
   parameters: {[id: string]: string};
   userParameters: string[];
@@ -39,15 +46,14 @@ interface LLMRunning extends LLMAvailable {
 }
 
 interface LLMResponse {
-    sessionId: string,
-    parameters: {[id: string]: string};
-    llm: LLM, //LLM used
+  sessionId: string,
+  parameters: {[id: string]: string};
+  llm: LLM, //LLM used
 }
 
 
 
 enum LLMRegistryEntryConnector {
-  Ggml = "ggml",
   LLMrs = "llmrs",
   OpenAI = "openai"
 }
@@ -55,7 +61,7 @@ enum LLMRegistryEntryConnector {
 interface LLMRegistry {
   id: string,
   url: string,
-  models: LLMRegistryEntry[],
+  models: {[id: string]: LLMRegistryEntry},
 }
 
 interface LLMRegistryRegistry {
@@ -68,33 +74,95 @@ enum LLMDownloadState {
   Downloaded,
 }
 
-interface LLMRegistryEntry {
-  id: string;
-  familyId: string;
-  organization: string;
-
-  name: string;
-  homepage: string;
-  description: string;
-  license: string;
-
-  capabilities: {[id: string]: number};
-  tags: string[],
-  requirements: string;
-
-  url: string;
-  backendUuid: string;
+interface LLMRegistryEntry extends LLM {
 
   connectorType: LLMRegistryEntryConnector;
-  createThread: boolean;
-  config: {[id: string]: string};
-
-  parameters: {[id: string]: string};
-  userParameters: string[];
-  sessionParameters: {[id: string]: string};
-  userSessionParameters: string[];
-
   downloadState: LLMDownloadState;
+  backendUuid: string;
+
+}
+export const produceEmptyRegistryEntry = (): LLMRegistryEntry => {
+  return {
+    id: '',
+    url: '',
+    name: '',
+    connectorType: LLMRegistryEntryConnector.LLMrs, // provide a default value based on your LLMRegistryEntryConnector enum
+    description: 'A generic rustformers/LLM.rs compatible model. Includes most ggml.',
+    tags: [],
+    familyId: '',
+    organization: '',
+    homepage: '',
+    capabilities: {
+      assistant: -1,
+      coding: -1,
+      writer: -1,
+    }, // initialize with default capabilities object
+    downloadState: LLMDownloadState.NotDownloaded,
+    backendUuid: '',
+    local: true,
+    requirements: '',
+    license: '',
+    parameters: {}, // initialize with default LLMRegistry array
+    userParameters: ["top_k", "top_p", "repeat_penalty", "temperature", "bias_token", "repetition_penalty_last_n"],
+    sessionParameters: {}, // initialize with default LLMRegistry array
+    userSessionParameters: [],
+    config: {}, // initialize with default config object
+  }
+}
+
+
+// Designed for external use
+// This attempt at manually cleaning things up
+function toLLMRegistryEntryExternal(remoteData: LLMRegistryEntry): LLMRegistryEntry {
+  let entry: LLMRegistryEntry = produceEmptyRegistryEntry();
+  console.log("Trying to merge", remoteData);
+
+  Object.keys(entry).forEach((raw_key, index) => {
+    let key = raw_key as keyof LLMRegistryEntry
+    if (remoteData.hasOwnProperty(key)) {
+      if (typeof entry[key] === 'number' && typeof remoteData[key] === 'number') {
+        (entry[key] as number) = (remoteData[key] as number);
+      }
+
+      if (typeof entry[key] === 'string' && typeof remoteData[key] === 'string') {
+        // If the key is not 'url', sanitize the value
+        if (key !== 'url') {
+          (entry[key] as string) = (remoteData[key] as string).replace(/[^\w-. \/]/g, '');
+        } else {
+          // validate url field
+          entry[key] = sanitizeUrl(remoteData[key]);
+        }
+
+      } else if (entry[key] instanceof Array && remoteData[key] instanceof Array) {
+        (entry[key] as Array<string>) = (remoteData[key] as Array<string>).map((item: string) => item.replace(/[^\w-. \/]/g, ''));
+
+      } else if (typeof entry[key] === 'object' && typeof remoteData[key] === 'object') {
+        (entry[key] as object) = {};
+        for (let subKey in (remoteData[key] as object)) {
+          if (typeof (remoteData[key] as {[key: string]: number})[subKey] === 'number') {
+            ((entry[key] as {[key: string]: number})[subKey] as number) = ((remoteData[key] as {
+              [key: string]: number
+            })[subKey] as number)
+
+
+          }
+
+          if (typeof (remoteData[key] as {[key: string]: string})[subKey] === 'string') {
+            ((entry[key] as {[key: string]: string})[subKey] as string) = ((remoteData[key] as {[key: string]: string})[subKey] as string).replace(/[^\w-. \/]/g, '');
+          }
+        }
+      }
+
+
+    }
+
+  });
+
+  return {
+    ...entry,
+    backendUuid: "",  // uuid populated later when download starts
+    downloadState: LLMDownloadState.NotDownloaded  // initially, it's not downloaded
+  };
 }
 
 async function toLLMRegistryEntry(remoteData: any): Promise<LLMRegistryEntry> {
@@ -120,7 +188,7 @@ function fromLLMRegistryEntry(frontendEntry: LLMRegistryEntry): any {
     url: frontendEntry.url,
     backend_uuid: frontendEntry.backendUuid,
     connector_type: frontendEntry.connectorType,
-    create_thread: frontendEntry.createThread,
+    local: frontendEntry.local,
     // Some registry entries are written in snake case, because that's our javascript norm
     // Ideally config etc are already written to be rust compatible but here we make sure.
     config: keysToSnakeCaseUnsafe(frontendEntry.config),
@@ -168,18 +236,18 @@ tauri, so any actually makes sense to use here.
 
 Credit to https://matthiashager.com/converting-snake-case-to-camel-case-object-keys-with-javascript
 */
-const keysToCamelUnsafe = function (o:any) {
-  const toCamel = (s:any) => {
-    return s.replace(/([-_][a-z])/ig, ($1:any) => {
+const keysToCamelUnsafe = function (o: any) {
+  const toCamel = (s: any) => {
+    return s.replace(/([-_][a-z])/ig, ($1: any) => {
       return $1.toUpperCase()
         .replace('-', '')
         .replace('_', '');
     });
   };
-  const isArray = function (a:any) {
+  const isArray = function (a: any) {
     return Array.isArray(a);
   };
-  const isObject = function (o:any) {
+  const isObject = function (o: any) {
     return o === Object(o) && !isArray(o) && typeof o !== 'function';
   };
   if (isObject(o)) {
@@ -192,7 +260,7 @@ const keysToCamelUnsafe = function (o:any) {
 
     return n;
   } else if (isArray(o)) {
-    return o.map((i:any) => {
+    return o.map((i: any) => {
       return keysToCamelUnsafe(i);
     });
   }
@@ -201,16 +269,16 @@ const keysToCamelUnsafe = function (o:any) {
 };
 
 // Credits to ChatGPT based on the above function from Matthias
-const keysToSnakeCaseUnsafe = function (o:any) {
-  const toSnakeCase = function (s:any) {
-    return s.replace(/([A-Z])/g, ($1:any) => {
+const keysToSnakeCaseUnsafe = function (o: any) {
+  const toSnakeCase = function (s: any) {
+    return s.replace(/([A-Z])/g, ($1: any) => {
       return '_' + $1.toLowerCase();
     });
   };
-  const isArray = function (a:any) {
+  const isArray = function (a: any) {
     return Array.isArray(a);
   };
-  const isObject = function (o:any) {
+  const isObject = function (o: any) {
     return o === Object(o) && !isArray(o) && typeof o !== 'function';
   };
   if (isObject(o)) {
@@ -222,7 +290,7 @@ const keysToSnakeCaseUnsafe = function (o:any) {
 
     return n;
   } else if (isArray(o)) {
-    return o.map((i:any) => {
+    return o.map((i: any) => {
       return keysToSnakeCaseUnsafe(i);
     });
   }
@@ -233,9 +301,10 @@ const keysToSnakeCaseUnsafe = function (o:any) {
 
 
 type DownloadEventType =
-  | { type: "DownloadProgress"; progress: string }
-  | { type: "DownloadCompletion" }
-  | { type: "DownloadError"; message: string };
+  | {type: "DownloadProgress"; progress: string}
+  | {type: "DownloadCompletion"}
+  | {type: "DownloadError"; message: string}
+  | {type: "ChannelClose"};
 
 
 type LLMHistoryItem = {
@@ -259,12 +328,23 @@ type LLMSession = {
   items: LLMHistoryItem[];
 };
 
+type LLMSessionStub = {
+  id: string //this is a uuid
+  started: Date;
+  lastCalled: Date;
+  name: string; //We don't get this from the server
+  llmUuid: string;
+  session_parameters: {[key: string]: string};
+  userId: string;
+};
+
+
 type LLMEventType =
-  | { type: "PromptProgress"; previous: string; next: string }
-  | { type: "PromptCompletion"; previous: string }
-  | { type: "PromptError"; message: string }
-  | { type: "ChannelClose" }
-  | { type: "Other" };
+  | {type: "PromptProgress"; previous: string; next: string}
+  | {type: "PromptCompletion"; previous: string}
+  | {type: "PromptError"; message: string}
+  | {type: "ChannelClose"}
+  | {type: "Other"};
 
 interface LLMEventPayload {
   streamId: string; // historyitem.id
@@ -273,11 +353,35 @@ interface LLMEventPayload {
   parameters: {[key: string]: string}; //historyitem.parameters
   input: string,
   llmUuid: string,
-  session?: LLMSession
+  session?: LLMSessionStub,
   event: LLMEventType;
 }
 
-function toLLMSession(rustSession: any): LLMSession {
+type PantryEvent =
+  DownloadEventType | LLMEventPayload;
+
+interface EmitterEvent {
+  event: string,
+  id: number,
+  payload: {
+    event: PantryEvent,
+    stream_id: string
+  }
+}
+
+type DeepLinkEventType =
+  | {type: "DownloadEvent", base64: string}
+  | {type: "URLError", message: string}
+  | {type: "DebugEvent", debug1: string, debug2: string};
+
+interface DeepLinkEvent {
+  payload: DeepLinkEventType,
+  raw: string,
+}
+
+
+
+function toLLMSession(rustSession: any, historyItems: any[]): LLMSession {
   return {
     id: rustSession.id,
     started: new Date(rustSession.started),
@@ -286,7 +390,19 @@ function toLLMSession(rustSession: any): LLMSession {
     llmUuid: rustSession.llm_uuid,
     session_parameters: rustSession.session_parameters,
     userId: rustSession.userId,
-    items: rustSession.items.map((item: any) => toLLMHistoryItem(item))
+    items: historyItems.map((item: any) => toLLMHistoryItem(item))
+  }
+}
+
+function toLLMSessionStub(rustSession: any): LLMSessionStub {
+  return {
+    id: rustSession.id,
+    started: new Date(rustSession.started),
+    lastCalled: new Date(rustSession.last_called),
+    name: "",  // Since this isn't provided by the server, set an empty string or some default value.
+    llmUuid: rustSession.llm_uuid,
+    session_parameters: rustSession.session_parameters,
+    userId: rustSession.userId,
   }
 }
 
@@ -303,6 +419,9 @@ function toLLMHistoryItem(rustHistoryItem: any): LLMHistoryItem {
 }
 
 function toLLMEventPayload(rustEvent: any): LLMEventPayload {
+  if (rustEvent.type !== "LLMResponse") {
+    console.error("Potentially invalid type conversion.")
+  }
   return {
     streamId: rustEvent.stream_id,
     timestamp: new Date(rustEvent.timestamp),
@@ -310,22 +429,22 @@ function toLLMEventPayload(rustEvent: any): LLMEventPayload {
     parameters: rustEvent.parameters,
     input: rustEvent.input,
     llmUuid: rustEvent.llm_uuid,
-    session: rustEvent.session ? toLLMSession(rustEvent.session) : undefined,
+    session: rustEvent.session ? toLLMSessionStub(rustEvent.session) : undefined,
     event: toLLMEventType(rustEvent.event),
   }
 }
 
 function toLLMEventType(rustEventInternal: any): LLMEventType {
-  switch(rustEventInternal.type) {
+  switch (rustEventInternal.type) {
     case "PromptProgress":
-      return { type: "PromptProgress", previous: rustEventInternal.previous, next: rustEventInternal.next };
+      return {type: "PromptProgress", previous: rustEventInternal.previous, next: rustEventInternal.next};
     case "PromptCompletion":
-      return { type: "PromptCompletion", previous: rustEventInternal.previous };
+      return {type: "PromptCompletion", previous: rustEventInternal.previous};
     case "PromptError":
-      return { type: "PromptError", message: rustEventInternal.message };
+      return {type: "PromptError", message: rustEventInternal.message};
     case "Other":
     default:
-      return { type: "Other" };
+      return {type: "Other"};
   }
 }
 
@@ -346,6 +465,8 @@ export type {
   LLMEventType,
   LLMEventPayload,
   LLMSession,
+  DeepLinkEvent,
+  EmitterEvent,
 }
 export {
   LLMRequestType,
@@ -369,7 +490,7 @@ function toLLM(rustLLM: any): LLM {
     url: rustLLM.url,
     requirements: rustLLM.requirements,
     license: rustLLM.license,
-    createThread: rustLLM.create_thread,
+    local: rustLLM.local,
     homepage: rustLLM.homepage,
     tags: rustLLM.tags,
 
@@ -422,5 +543,7 @@ function toLLMRequest(rustLLMRequest: any): LLMRequest {
   return baseRequest;
 }
 
-export { toLLM, toLLMAvailable, toLLMRunning, toLLMRequest, toLLMResponse, toLLMRegistryEntry, fromLLMRegistryEntry, toLLMSession, toLLMHistoryItem, toLLMEventPayload };
+
+
+export {toLLM, toLLMAvailable, toLLMRunning, toLLMRequest, toLLMResponse, toLLMRegistryEntry, toLLMRegistryEntryExternal, fromLLMRegistryEntry, toLLMSession, toLLMHistoryItem, toLLMEventPayload, };
 

@@ -33,7 +33,7 @@ pub fn factory_llms() -> Vec<llm::LLM> {
 
             uuid: DbUuid(Uuid::new_v4()),
 
-            create_thread: false, //eventually false, true for testing
+            local: false, //eventually false, true for testing
             connector_type: connectors::LLMConnectorType::OpenAI,
             config: DbHashMap(HashMap::from([
                 ("endpoint".to_string(), json!("completions")),
@@ -70,7 +70,7 @@ pub fn factory_llms() -> Vec<llm::LLM> {
 
             uuid: DbUuid(Uuid::new_v4()),
 
-            create_thread: true, //eventually false, true for testing
+            local: true, //eventually false, true for testing
             connector_type: connectors::LLMConnectorType::OpenAI,
             config: DbHashMap(HashMap::from([
                 ("endpoint".to_string(), json!("completions")),

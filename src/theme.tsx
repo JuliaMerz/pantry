@@ -1,14 +1,14 @@
-import { createTheme } from '@mui/material/styles';
-import { ArrowForwardIosSharp } from '@mui/icons-material';
+import {createTheme} from '@mui/material/styles';
+import {ArrowForwardIosSharp} from '@mui/icons-material';
 
-import { Box } from '@mui/material';
-import { styled } from '@mui/material/styles';
+import {Box} from '@mui/material';
+import {styled} from '@mui/material/styles';
 
 
 
-import {createContext } from "react";
+import {createContext} from "react";
 
-import { Theme, ThemeOptions } from '@mui/material/styles';
+import type {Theme, ThemeOptions} from '@mui/material/styles';
 
 
 export const darkTheme: ThemeOptions = {
@@ -36,16 +36,36 @@ export const lightTheme: ThemeOptions = {
 };
 
 // This is combined with light/dark and then expanded by createTheme
-export const universal:ThemeOptions = {
+export const universal: ThemeOptions = {
   components: {
     // Name of the component
     MuiButtonBase: {
       defaultProps: {
         // The props to change the default for.
         disableRipple: true, // No more ripple, on the whole application 💣!
+
       },
     },
-    MuiAppBar: {
+    MuiCard: {
+      styleOverrides: {
+        root: ({ownerState, theme}) => {
+            return theme.unstable_sx({
+              marginY: 1,
+            })
+        },
+      },
+    },
+    MuiButton: {
+      styleOverrides: {
+        root: ({ownerState, theme}) => {
+          if (ownerState.variant == "contained" || ownerState.variant == "outlined") {
+            return theme.unstable_sx({
+              marginRight: 1,
+              marginTop: 1,
+            })
+          }
+        },
+      },
     },
     MuiTable: {
       defaultProps: {
@@ -74,56 +94,6 @@ export const universal:ThemeOptions = {
 export const postUniversal: (theme: Theme) => Theme = (theme) => {
   return createTheme(theme, {
     components: {
-      MuiAccordion: {
-        variants: [
-          {
-            props: { variant: 'innerCard' },
-            style: {
-              border: `1px solid`,
-              borderColor: 'divider',
-              '&:not(:last-child)': {
-                borderBottom: 0,
-              },
-              '&:before': {
-                display: 'none',
-              },
-              disableGutters: true,
-              square: true,
-            },
-          },
-        ],
-      },
-      MuiAccordionSummary: {
-        variants: [
-          {
-            props: { variant: 'innerCard' },
-            style: {
-              backgroundColor:
-                theme.palette.mode === 'dark'
-                  ? 'rgba(255, 255, 255, .05)'
-                  : 'rgba(0, 0, 0, .03)',
-              flexDirection: 'row-reverse',
-              '& .MuiAccordionSummary-expandIconWrapper.Mui-expanded': {
-                transform: 'rotate(90deg)',
-              },
-              '& .MuiAccordionSummary-content': {
-                marginLeft: theme.spacing(1),
-              },
-            },
-          },
-        ],
-      },
-      MuiAccordionDetails: {
-        variants: [
-          {
-            props: { variant: 'innerCard' },
-            style: {
-              padding: theme.spacing(2),
-              borderTop: '1px solid rgba(0, 0, 0, .125)',
-            },
-          },
-        ],
-      },
       MuiTab: {
         styleOverrides: {
           root: {
@@ -136,7 +106,7 @@ export const postUniversal: (theme: Theme) => Theme = (theme) => {
 
         }
       },
-      MuiTextField : {
+      MuiTextField: {
         defaultProps: {
           margin: "dense"
         }
@@ -148,6 +118,7 @@ export const postUniversal: (theme: Theme) => Theme = (theme) => {
 
 interface ColorContextSchema {
   toggleColorMode: () => void;
+  color: string;
 }
 
 export const ColorContext = createContext<ColorContextSchema>(
@@ -169,7 +140,7 @@ interface ModalBoxProps {
   children: React.ReactNode;
 }
 
-const ModalBoxWrapper = styled(Box)(({ theme }) => ({
+const ModalBoxWrapper = styled(Box)(({theme}) => ({
   position: 'absolute',
   top: '50%',
   left: '50%',
@@ -178,6 +149,7 @@ const ModalBoxWrapper = styled(Box)(({ theme }) => ({
   bgcolor: theme.palette.background.paper,
   border: `2px solid ${theme.palette.divider}`,
   boxShadow: theme.shadows[24],
+  maxHeight: '90vh',
   pt: 2,
   px: 4,
   pb: 3,
@@ -185,7 +157,8 @@ const ModalBoxWrapper = styled(Box)(({ theme }) => ({
   margin: 2,
 }));
 
-export const ModalBox: React.FC<ModalBoxProps> = ({ children }) => {
+export const ModalBox: React.FC<ModalBoxProps> = ({children}) => {
   return (<ModalBoxWrapper>{children}</ModalBoxWrapper>);
 };
+
 

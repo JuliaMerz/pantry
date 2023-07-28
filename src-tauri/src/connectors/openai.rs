@@ -1,9 +1,9 @@
 use crate::connectors::{LLMEvent, LLMInternalWrapper};
 use crate::database_types::*;
-use crate::llm::{LLMSession};
+use crate::llm::LLMSession;
 use crate::state;
 use crate::user::User;
-use chrono::{Utc};
+use chrono::Utc;
 
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool};
@@ -63,9 +63,8 @@ impl LLMInternalWrapper for OpenAIConnector {
     //     }
     // }
 
-    async fn get_sessions(&self, _user: User) -> Result<Vec<LLMSession>, String> {
-        // Filter sessions by user ID and clone them into a new vector
-        todo!()
+    async fn maintenance(self: &mut Self) -> Result<(), String> {
+        Ok(())
     }
 
     async fn create_session(
@@ -104,6 +103,10 @@ impl LLMInternalWrapper for OpenAIConnector {
     async fn load_llm(self: &mut Self) -> Result<(), String> {
         return Ok(());
     }
+
+    async fn pre_unload(self: &Self) -> Result<(), String> {
+        todo!()
+    } //called by shutdown
 
     async fn unload_llm(self: &Self) -> Result<(), String> {
         todo!()

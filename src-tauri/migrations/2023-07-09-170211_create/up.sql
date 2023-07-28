@@ -36,7 +36,7 @@ CREATE TABLE requests (
     reason TEXT NOT NULL,
     timestamp DATETIME NOT NULL,
     request TEXT NOT NULL,
-    FOREIGN KEY(user_id) REFERENCES user(id)
+    FOREIGN KEY(user_id) REFERENCES user(id) ON DELETE CASCADE
 );
 
 CREATE TABLE llm_history (
@@ -48,7 +48,7 @@ CREATE TABLE llm_history (
     parameters TEXT NOT NULL,
     input TEXT NOT NULL,
     output TEXT NOT NULL,
-    FOREIGN KEY(llm_session_id) REFERENCES llm_session(id)
+    FOREIGN KEY(llm_session_id) REFERENCES llm_session(id) ON DELETE CASCADE
 
 );
 
@@ -59,8 +59,8 @@ CREATE TABLE llm_session (
     started DATETIME NOT NULL,
     last_called DATETIME NOT NULL,
     session_parameters TEXT NOT NULL,
-    FOREIGN KEY(llm_uuid) REFERENCES llm(uuid),
-    FOREIGN KEY(user_id) REFERENCES user(id)
+    FOREIGN KEY(llm_uuid) REFERENCES llm(uuid) ON DELETE CASCADE,
+    FOREIGN KEY(user_id) REFERENCES user(id) ON DELETE CASCADE
 );
 
 CREATE TABLE user (

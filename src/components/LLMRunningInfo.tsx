@@ -1,38 +1,20 @@
 // src/components/LLMRunningInfo.tsx
 
-import {listen} from '@tauri-apps/api/event'
-import {CancelOutlined, CheckCircleOutlined} from '@mui/icons-material';
+import {CheckCircleOutlined} from '@mui/icons-material';
+import {listen} from '@tauri-apps/api/event';
 
 import {
-  Box,
-  Accordion,
-  Divider,
-  AccordionSummary,
-  AccordionDetails,
-  IconButton,
-  Typography,
-  Card,
-  CardContent,
-  CircularProgress,
-  TableContainer,
-  Table,
-  TableHead,
-  TableRow,
-  TableCell,
-  TableBody,
-  TextField,
-  TextareaAutosize,
-  Button,
-  Link,
-  Switch,
-  Paper,
-  Select,
-  MenuItem
+  Accordion, AccordionDetails, AccordionSummary, Box, Button, Card,
+  CardContent, Grid,
+  CircularProgress, Divider, Link, MenuItem, Paper,
+  Select, Switch, Table, TableBody, TableCell, TableContainer, TableHead,
+  TableRow, TextField, Typography
 } from '@mui/material';
 
-import React, {useState, useEffect} from 'react';
-import {LLMRunning, LLMResponse, toLLMResponse, LLMHistoryItem, LLMEventType, LLMEventPayload, LLMSession, toLLMEventPayload, toLLMHistoryItem, toLLMSession} from '../interfaces';
+import React, {useEffect, useState} from 'react';
+import {LLMEventPayload, LLMHistoryItem, LLMRunning, LLMSession, toLLMEventPayload, toLLMResponse, toLLMSession, toLLMHistoryItem} from '../interfaces';
 import LLMInfo from './LLMInfo';
+import {InnerCard} from './InnerCard';
 
 import {invoke} from '@tauri-apps/api/tauri';
 import {Store} from "tauri-plugin-store-api";
@@ -68,6 +50,7 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
   refreshFn,
 }) => {
   const [checked, setChecked] = useState(true);
+  const [justSubmitted, setJustSubmitted] = useState(false);
   const [userSessionParametersState, setUserSessionParametersState] = useState<{[id: string]: any}>(Object.fromEntries(llm.userSessionParameters.map((val) => [val, undefined])));
   const [userParametersState, setUserParametersState] = useState<{[id: string]: any}>(Object.fromEntries(llm.userParameters.map((val) => [val, undefined])));
   const [message, setMessage] = useState("");
@@ -87,16 +70,17 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
 
   const fetchSessions = async () => {
     console.log("llm.uuid", llm);
-    const {data: sessions} = (await invoke('get_sessions', {llmUuid: llm.uuid}) as {data: LLMSession[]});
-    console.log("fetche sessions", sessions.map(toLLMSession));
+    const {data: pairs} = (await invoke('get_sessions', {llmUuid: llm.uuid}) as {data: [LLMSession, LLMHistoryItem[]][]});
+    let sessions = pairs.map((pair) => toLLMSession(pair[0], pair[1]));
+    console.log("fetche sessions", sessions);
     sessions.map((val) => setCancellationStatus(prevStatus => ({...prevStatus, [val.id]: false})));
     sessions.map((val) => setCancellationSuccessful(prevStatus => ({...prevStatus, [val.id]: false})));
 
-    setActiveSessions(sessions.map(toLLMSession));
+    setActiveSessions(sessions);
   };
 
   const listenForNewSessions = () => {
-    const unlisten_promise = listen<LLMEventPayload>("llm_response", (event) => {
+    const unlisten_promise = listen<any>("llm_response", (event) => {
       console.log("heard event: ", event);
 
       //In doing this we skip channel close messages, but we don't subscribe to a singular channel so it's chilld
@@ -130,6 +114,7 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
         }
         return ({...prevStatus, [id]: false})
       });
+      setJustSubmitted(false);
 
       setActiveSessions((currentSessions: LLMSession[]) => {
         let sessionIndex = currentSessions.findIndex((session) => session.id === payload.session?.id);
@@ -143,6 +128,7 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
           session = {
             id: payload.session?.id || '',
             started: new Date(),
+            userId: '00000000-0000-0000-0000-000000000000',
             name: '', // You mentioned that we don't get the name from the server.
             lastCalled: payload.session?.lastCalled || new Date(),
             llmUuid: payload.llmUuid,
@@ -251,9 +237,11 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
     console.log("attempting to call session");
     setCancellationStatus(prevStatus => ({...prevStatus, [selectedSessionId]: false}));
     setCancellationSuccessful(prevSuccess => ({...prevSuccess, [selectedSessionId]: false}));
+    setJustSubmitted(true);
 
 
     if (selectedSessionId) {
+      setSessionMessage("");
       await invoke('prompt_session', {llmUuid: llm.uuid, sessionId: selectedSessionId, prompt: sessionMessage, parameters: userParametersState})
         .catch((err) => {
           console.error(err);
@@ -268,6 +256,7 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
   const cancelSession = async (id: string) => {
     console.log("attempting to interrupt");
 
+    setJustSubmitted(false);
     setCancellationStatus(prevStatus => ({...prevStatus, [id]: true}));
 
     invoke('interrupt_session', {llmUuid: llm.uuid, sessionId: id})
@@ -291,6 +280,7 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
       .then((response) => {
         console.log("call_llm response: ", response);
         setSelectedSessionId((response as any).data.session_id); //raw so underscore case
+        setMessage("");
         //create a new session here
         return toLLMResponse((response as any).data);
       }).catch((err) => {
@@ -312,32 +302,33 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
         <LLMInfo llm={llm} rightButton={<Switch checked={checked} onClick={handleToggle} />} />
         <Link href={"/history/" + llm.id}>Last Called: {llm.lastCalled ? llm.lastCalled.toString() : "Never"}</Link>
         <Box>
-          <Accordion variant="innerCard" expanded={expanded === 'interface'} onChange={handleAccordion('interface')}>
-            <AccordionSummary variant="innerCard" aria-controls="panel1d-content" id="panel1d-header">
-              <Typography>Interface</Typography>
-            </AccordionSummary>
-            <AccordionDetails variant="innerCard">
-              <Box sx={{borderBottom: "2 solid black"}}>
-                <Select value={selectedSessionId} onChange={(e) => setSelectedSessionId(e.target.value)}>
-                  <MenuItem key="new" value='New Session'>New Session</MenuItem>
-                  {activeSessions.sort((a, b) => a.lastCalled.getTime() - b.lastCalled.getTime()).map((session) => (
-                    <MenuItem key={session.id} value={session.id}>{session.name ? `${session.name}` : `${session.id}`}</MenuItem>
-                  ))}
-                </Select>
-              </Box>
+          <InnerCard title={"Interface"}>
+            <Box sx={{borderBottom: "2 solid black"}}>
+              <Select value={selectedSessionId} onChange={(e) => setSelectedSessionId(e.target.value)}>
+                <MenuItem key="new" value='New Session'>New Session</MenuItem>
+                {activeSessions.sort((a, b) => b.lastCalled.getTime() - a.lastCalled.getTime()).map((session) => (
+                  <MenuItem key={session.id} value={session.id}>{session.name ? `${session.name}` : `${session.id}`}</MenuItem>
+                ))}
+                {(selectedSessionId !== 'New Session' && activeSessions.findIndex((sess) => {return sess.id == selectedSessionId}) == -1) ? (
+                  <MenuItem key={selectedSessionId} value={selectedSessionId}>{selectedSessionId}</MenuItem>
+                ) : null}
 
-              {selectedSessionId !== 'New Session' ? (activeSessions.findIndex((sess) => {return sess.id == selectedSessionId}) == -1 ? (
-                <Box key={setSelectedSessionId}>
-                  <CircularProgress />
-                </Box>
-              ) :
-                activeSessions.map((session) => (
-                  session.id === selectedSessionId && (
-                    <Box key={session.id}>
-                      <Typography variant="h4">{session.name ? `Session: ${session.name}` : `Session ID: ${session.id}`}</Typography>
-                      <Typography variant="subtitle2">Started At: {session.started.toString()}</Typography>
-                      <Typography variant="h5">Session Parameters:</Typography>
-                      {Object.keys(session.session_parameters).length > 0 ? (
+              </Select>
+            </Box>
+
+            {selectedSessionId !== 'New Session' ? (activeSessions.findIndex((sess) => {return sess.id == selectedSessionId}) == -1 ? (
+              <Box>
+                <CircularProgress />
+              </Box>
+            ) :
+              activeSessions.map((session) => (
+                session.id === selectedSessionId ? (
+                  <Box key={session.id}>
+                    <Typography variant="h5">{session.name ? `Session: ${session.name}` : `Session ID: ${session.id}`}</Typography>
+                    <Typography color="text.secondary" variant="subtitle2">Started At: {session.started.toString()}</Typography>
+                    {Object.keys(session.session_parameters).length > 0 ? (
+                      <>
+                        <Typography variant="h6">Session Parameters:</Typography>
                         <TableContainer component={Paper}>
                           <Table size="small" aria-label="llm details">
                             <TableHead>
@@ -355,39 +346,57 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
                               ))}
                             </TableBody>
                           </Table>
-                        </TableContainer>
-                      ) : null
-                      }
-                      <Typography variant="h5">History:</Typography>
-                      {session.items.map((item, index) => (
-                        <Box key={index}>
-                          <Typography variant="subtitle2">History Item ID: {item.id}</Typography>
-                          <Typography variant="subtitle2">Timestamp: {item.callTimestamp.toString()}</Typography>
-                          {Object.keys(item.parameters).length > 0 ? (
-                            <TableContainer component={Paper}>
-                              <Table size="small" aria-label="llm details">
-                                <TableHead>
-                                  <TableRow>
-                                    <TableCell>Parameter</TableCell>
-                                    <TableCell>Value</TableCell>
+                        </TableContainer></>
+                    ) : null
+                    }
+                    <Typography variant="h6">History:</Typography>
+                    {session.items.map((item, index) => (
+                      <Box sx={{padding: 1}} key={index}>
+                        <Typography color="text.secondary" sx={{fontStyle: 'italic'}} variant="body2">History Item ID: {item.id}</Typography>
+                        <Typography color="text.secondary" sx={{fontStyle: 'italic'}} variant="body2">Timestamp: {item.callTimestamp.toString()}</Typography>
+                        {Object.keys(item.parameters).length > 0 ? (
+                          <TableContainer sx={{
+                            borderColor: "text.secondary",
+                            border: 0,
+                            margin: 0,
+                            boxShadow: 0,
+                            fontColor: "text.secondary",
+                          }} component={Paper}>
+                            <Table size="small" aria-label="llm details">
+                              <TableHead sx={{
+
+                              }}>
+                                <TableRow>
+                                  <TableCell sx={{
+                                    color: "text.secondary"
+                                  }}>Parameter</TableCell>
+                                  <TableCell sx={{color: "text.secondary"}}>Value</TableCell>
+                                </TableRow>
+                              </TableHead>
+                              <TableBody>
+                                {Object.entries(item.parameters).map(([paramName, paramValue], index) => (
+                                  <TableRow key={index}>
+                                    <TableCell sx={{color: "text.secondary"}}>{paramName}</TableCell>
+                                    <TableCell sx={{color: "text.secondary"}}>{paramValue}</TableCell>
                                   </TableRow>
-                                </TableHead>
-                                <TableBody>
-                                  {Object.entries(item.parameters).map(([paramName, paramValue], index) => (
-                                    <TableRow key={index}>
-                                      <TableCell>{paramName}</TableCell>
-                                      <TableCell>{paramValue}</TableCell>
-                                    </TableRow>
-                                  ))}
-                                </TableBody>
-                              </Table>
-                            </TableContainer>
-                          ) : null
-                          }
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </TableContainer>
+                        ) : null
+                        }
+                        <Box sx={{
+                          paddingY: 1,
+                          borderRadius: 1,
+                          marginY: 1,
+                          borderColor: "text.secondary"
+
+                        }}>
                           <Typography variant="subtitle2">Input</Typography>
                           <Paper sx={{
 
                             p: 1,
+                            mb: 0.5,
                           }}>
                             <Typography variant="body1">{item.input}</Typography>
                           </Paper>
@@ -398,90 +407,100 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
                           }}>
                             <Typography>{item.output}</Typography>
                           </Paper>
-                          <Divider sx={{
-
-                            margin: 4
-                          }} />
                         </Box>
-                      ))}
-                      {session.items.length == 0 || session.items[session.items.length - 1].complete ? (null) : (
-                        <Box sx={{display: 'flex', alignItems: 'center'}}>
-                          <Button variant="contained" color="error" onClick={() => cancelSession(session.id)}>
-                            {cancellationStatus[session.id] ? (cancellationSuccessful[session.id] ? <CheckCircleOutlined /> : <CircularProgress />) : "Cancel"}
-                          </Button>
-                          {cancellationSuccessful[session.id] ? (
-                            <Typography variant="subtitle2" sx={{color: 'green', marginLeft: 1}}>
-                              Cancellation Successful
-                            </Typography>
-                          ) : null}
-                        </Box>)}
-                      <Box>
-                        <form onSubmit={handleSessionSubmit}>
-                          <Typography component="label">Parameters:</Typography>
+                        {session.items.length == 0 || session.items[session.items.length - 1].complete || index !== session.items.length - 1 ? (null) : (
+                          <Box sx={{display: 'flex', alignItems: 'center'}}>
+                            <Button sx={{
+                            }}
+                              variant="contained" color="error" onClick={() => cancelSession(session.id)}>
+                              {cancellationStatus[session.id] ? (cancellationSuccessful[session.id] ? <CheckCircleOutlined /> : <CircularProgress />) : "Cancel"}
+                            </Button>
+                            {cancellationSuccessful[session.id] ? (
+                              <Typography variant="subtitle2" sx={{color: 'green', marginLeft: 1}}>
+                                Cancellation Successful
+                              </Typography>
+                            ) : null}
+                          </Box>)}
+                        <Divider sx={{
+
+                          marginTop: 3,
+                          marginBottom: 1,
+                        }} />
+                      </Box>
+                    ))}
+                    <Box>
+                      <form onSubmit={handleSessionSubmit}>
+                        <Typography component="label">Parameters:</Typography>
+                        <Grid container sx={{marginY: 2}} spacing={{xs: 2, md: 3}}>
                           {Object.entries(userParametersState).map(([paramName, paramValue], index) => (
-                            <Box key={index}>
+                            <Grid item key={index}>
                               <TextField
                                 label={paramName}
                                 onChange={(e) => handleParameterChange(paramName, e.target.value)}
                                 variant="outlined"
                               />
-                            </Box>
+                            </Grid>
                           ))}
-                          <Box>
-                            <TextField
-                              label="Session Message"
-                              multiline
-                              value={sessionMessage}
-                              onChange={handleSessionMessageChange}
-                              variant="outlined"
-                            />
-                          </Box>
-                          <Button type="submit">Submit</Button>
-                        </form>
-                      </Box>
-                    </Box>
-                  )))) :
-                (
-                  <Box>
-                    <Typography variant="h5">Create a New Session</Typography>
-                    <form onSubmit={handleNewSessionSubmit}>
-                      <Typography component="label">Session Parameters:</Typography>
-                      {Object.entries(userSessionParametersState).map(([paramName, paramValue], index) => (
-                        <Box key={index}>
+                        </Grid>
+                        <Box>
                           <TextField
-                            label={paramName}
-                            onChange={(e) => handleSessionParameterChange(paramName, e.target.value)}
+                            label="Session Message"
+                            multiline
+                            value={sessionMessage}
+                            onChange={handleSessionMessageChange}
                             variant="outlined"
                           />
                         </Box>
-                      ))}
-                      <Typography component="label">User Parameters:</Typography>
+                        <Button type="submit">Submit</Button> {justSubmitted ? (<CircularProgress />) : null}
+                      </form>
+                    </Box>
+                  </Box>
+                ) : null
+              ))) :
+              (
+                <Box>
+                  <Typography variant="h5">Create a New Session</Typography>
+                  <form onSubmit={handleNewSessionSubmit}>
+                    <Typography component="label">Session Parameters:</Typography>
+                    {Object.entries(userSessionParametersState).map(([paramName, paramValue], index) => (
+                      <Box key={index}>
+                        <TextField
+                          label={paramName}
+                          onChange={(e) => handleSessionParameterChange(paramName, e.target.value)}
+                          variant="outlined"
+                        />
+                      </Box>
+                    ))}
+                    <Typography component="label">User Parameters:</Typography>
+                    <Grid container sx={{
+
+                      marginY: 2
+                    }} spacing={{xs: 2, md: 3}}>
                       {Object.entries(userParametersState).map(([paramName, paramValue], index) => (
-                        <Box key={index}>
+                        <Grid item key={index}>
                           <TextField
                             label={paramName}
                             onChange={(e) => handleParameterChange(paramName, e.target.value)}
                             variant="outlined"
                           />
-                        </Box>
+                        </Grid>
                       ))}
-                      <Box>
-                        <TextField
-                          label="Message"
-                          multiline
-                          minRows={4}
-                          minWidth={20}
-                          value={message}
-                          onChange={handleMessageChange}
-                          variant="outlined"
-                        />
-                      </Box>
-                      <Button type="submit">Submit</Button>
-                    </form>
-                  </Box>
-                )}
-            </AccordionDetails>
-          </Accordion>
+                    </Grid>
+                    <Box>
+                      <TextField
+                        label="Message"
+                        multiline
+                        minRows={4}
+                        value={message}
+                        onChange={handleMessageChange}
+                        variant="outlined"
+                      />
+                    </Box>
+                    <Button type="submit">Submit</Button>
+                  </form>
+                </Box>
+              )}
+          </InnerCard>
         </Box>
         <Box>
           <Typography variant="body2"><small>Downloaded: {llm.downloaded}</small></Typography>

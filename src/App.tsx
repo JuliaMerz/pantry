@@ -1,30 +1,41 @@
-import { forwardRef, useState, useMemo } from "react";
-import { deepmerge } from "@mui/utils";
+import {forwardRef, useRef, useState, useMemo, useEffect} from "react";
+import {deepmerge} from "@mui/utils";
+import {listen} from '@tauri-apps/api/event';
+import {produceEmptyRegistryEntry} from './interfaces';
+import {addRegistryEntry, downloadLLM} from './registryHelpers';
 import reactLogo from "./assets/react.svg";
-import { invoke } from "@tauri-apps/api/tauri";
-import { Link, NavLink, NavLinkProps } from 'react-router-dom';
-import { lightTheme, darkTheme, universal, postUniversal, ColorContext } from './theme';
-import PopupState, { bindTrigger, bindMenu } from 'material-ui-popup-state';
+import {invoke} from "@tauri-apps/api/tauri";
+import {Link, NavLink, NavLinkProps} from 'react-router-dom';
+import {lightTheme, darkTheme, universal, postUniversal, ColorContext} from './theme';
+import {ErrorContext} from './context';
+import PopupState, {bindTrigger, bindMenu} from 'material-ui-popup-state';
+import {DeepLinkEvent, toLLMRegistryEntryExternal} from "./interfaces";
 
 
 
-import { BrowserRouter as Router, Route, Routes } from "react-router-dom";
+import {BrowserRouter as Router, Route, Routes} from "react-router-dom";
 import Home from "./pages/Home";
 import History from "./pages/History";
 import AvailableLLMs from "./pages/AvailableLLMs";
 import DownloadLLMs from "./pages/DownloadableLLMs";
 import Requests from "./pages/Requests";
 import Settings from "./pages/Settings";
+import {ModalBox} from './theme';
+import LLMInfo from "./components/LLMInfo";
 
 import {
   AppBar,
   Box,
+  Button,
+  Card,
+  CardContent,
   CssBaseline,
   createTheme,
   ThemeProvider,
   InputLabel,
   PaletteMode,
   Toolbar,
+  Modal,
   Typography,
   useMediaQuery,
   useTheme,
@@ -34,6 +45,7 @@ import {
   MenuItem,
   ListItemButton,
   ListItemText,
+  LinearProgress,
 } from '@mui/material';
 
 function LinkTab(props: any) {
@@ -43,7 +55,7 @@ function LinkTab(props: any) {
 const LinkRef = forwardRef<HTMLAnchorElement, NavLinkProps>((props, ref) => <NavLink ref={ref} {...props} />);
 
 function MenuItemLink(props: any) {
-  const { value, to, primary } = props;
+  const {value, to, primary} = props;
   return (
     <MenuItem value={value}>
       <ListItemButton component={LinkRef} to={to}>
@@ -53,10 +65,25 @@ function MenuItemLink(props: any) {
   );
 }
 
+interface OngoingNotification {
+  lastId: number,
+  progress?: number | string,
+  description: string,
+  type: "error" | "download" | "inference"
+
+}
 
 function App() {
   const [mode, setMode] = useState<PaletteMode>("light");
   const [value, setValue] = useState('home');
+  const [latestEvent, setLatestEvent] = useState('test');
+  const [downloadModalOpen, setDownloadModalOpen] = useState(false);
+  const [lastError, setLastError] = useState('');
+  const [downloadRegistryEntry, setDownloadRegistryEntry] = useState(produceEmptyRegistryEntry());
+
+  // stream-id: string, notification
+  const [ongoingNotifications, setOngoingNotifications] = useState<{[key: string]: OngoingNotification}>({});
+  const refNotifications = useRef(ongoingNotifications);
 
 
   const colorMode = useMemo(
@@ -66,9 +93,35 @@ function App() {
           prevMode === "light" ? "dark" : "light"
         );
       },
+      color: mode,
     }),
-    []
+    [mode]
   );
+
+  const errorHandler = useMemo(
+    () => ({
+      sendError: (error: string) => {
+        let msgId = Math.random()
+        setOngoingNotifications((prev) => {
+          let new_error: OngoingNotification = {
+            lastId: msgId,
+            description: error,
+            type: "download"
+          }
+
+
+          return {[msgId]: new_error, ...prev}
+        })
+        setTimeout(() => {
+          setOngoingNotifications((prev) => {
+            console.log('del', prev);
+            const {[msgId]: _, ...without} = prev;
+            return without;
+          });
+        }, 3000);
+      },
+      lastError: lastError
+    }), [lastError]);
 
   const theme = useMemo(
     () => postUniversal(createTheme(deepmerge((mode === "light" ? lightTheme : darkTheme), universal))),
@@ -84,74 +137,213 @@ function App() {
     setValue(event.target.value);
   };
 
+  const handleBookmark = async () => {
+    await addRegistryEntry(downloadRegistryEntry, 'shared');
+    setDownloadModalOpen(false);
+
+  }
+
+  const handleDownload = async () => {
+    setDownloadModalOpen(false);
+    try {
+      await addRegistryEntry(downloadRegistryEntry, 'shared');
+      console.log("current registry id:", downloadRegistryEntry);
+      await downloadLLM(downloadRegistryEntry, 'shared');
+    } catch (error: any) {
+      errorHandler.sendError(error.toString());
+
+    }
+  }
 
 
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+
+    const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+
+    useEffect(() => {
+      let unlisten: (() => void) | undefined;
+
+      (async () => {
+        unlisten = await listen('downloads', (event: any) => {
+          const msgId = Math.random();
+          const streamId = event.payload.stream_id;
+          if (streamId in refNotifications.current && event.payload.event.type == "DownloadProgress") {
+            setOngoingNotifications((prev) => {
+              prev[streamId].lastId = msgId;
+              prev[streamId].progress = parseInt(event.payload.event.progress);
+              prev[streamId].description = "Downloading LLM ";
+              return {...prev};
+
+            });
+          } else {
+            setOngoingNotifications((prev) => {
+              console.log("no match", streamId, refNotifications.current, ongoingNotifications)
+              prev[streamId] = {
+                lastId: msgId,
+                progress: parseInt(event.payload.event.progress),
+                description: "Began downloading LLM ",
+                type: "download"
+              };
+              return {...prev}
+            });
+          }
+
+          setTimeout(() => {
+            if (refNotifications.current[streamId].lastId === msgId) {
+              console.log("DELEITNG", refNotifications.current, msgId)
+              setOngoingNotifications((prev) => {
+                console.log('del', prev);
+                const {[streamId]: _, ...without} = prev;
+                return without;
+              });
+            }
+          }, 3000);
+        });
+      })();
+
+      return () => {unlisten && unlisten();}
+    });
 
 
 
-  return (
-    <ColorContext.Provider value={colorMode}>
-      <ThemeProvider theme={theme}>
-        <CssBaseline enableColorScheme />
 
 
-              <Router>
-        <AppBar position="static">
-          <Toolbar>
-            <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-              Logo
-            </Typography>
-            {isMobile ? (
-              <>
-              <InputLabel>{value}</InputLabel>
-              <Select value={value} onChange={handleSelectChange}>
-                <MenuItemLink value="home" to="/" primary="Home" />
-                <MenuItemLink value="available-llms" to="/available-llms" primary="Available LLMs" />
-                <MenuItemLink value="download-llms" to="/download-llms" primary="Download LLMs" />
-                <MenuItemLink value="requests" to="/requests" primary="Requests" />
-                <MenuItemLink value="settings" to="/settings" primary="Settings" />
-              </Select>
-              </>
+    const listenForDeepLink = () => {
+      const unlisten_promise = listen<any>("deep-link-request", (raw_event) => {
+        console.log(raw_event)
+        setLatestEvent(JSON.stringify(raw_event));
 
-            ) : (
-              <Tabs value={value} onChange={handleChange}>
-                <LinkTab label="Home" to="/" value="home" />
-                <LinkTab label="Available LLMs" to="/available-llms" value="available-llms" />
-                <LinkTab label="Download LLMs" to="/download-llms" value="download-llms" />
-                <LinkTab label="Requests" to="/requests" value="requests" />
-                <LinkTab label="Settings" to="/settings" value="settings" />
-              </Tabs>
-            )}
-          </Toolbar>
-        </AppBar>
-      <Box sx={{
-          p: 3, // padding
-          mx: 'auto', // center the Box horizontally
-          width: '100%', // Full width
-          maxWidth: 'lg', // constrain maximum width to 'lg' breakpoint value
-          bgcolor: 'background.default', // use default background color
-          display: 'flex', // make it a flex container
-          flexDirection: 'column', // arrange children vertically
-        }}>
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/history/:id" element={<History />} />
-          <Route path="/available-llms" element={<AvailableLLMs />} />
-          <Route path="/download-llms" element={<DownloadLLMs />} />
-          <Route path="/requests" element={<Requests />} />
-          <Route path="/settings" element={<Settings />} />
-        </Routes>
-      </Box>
-      </Router>
+        let event: DeepLinkEvent = raw_event.payload as DeepLinkEvent;
+
+        if (event.payload.type == "DownloadEvent") {
 
 
-      </ThemeProvider>
-    </ColorContext.Provider>
 
-  );
-}
+          let registryEntry = toLLMRegistryEntryExternal(JSON.parse(atob(event.payload.base64)));
 
-export default App;
+          console.log("Got registry entry", registryEntry);
+
+          setDownloadRegistryEntry((current) => {
+            return {...downloadRegistryEntry, ...registryEntry}
+          })
+          setDownloadModalOpen(true);
+        }
 
 
+
+      });
+      return () => {
+        // https://github.com/tauri-apps/tauri/discussions/5194#discussioncomment-3651818
+        unlisten_promise.then(f => f());
+      };
+    };
+    useEffect(listenForDeepLink);
+
+
+    return (
+      <ColorContext.Provider value={colorMode}>
+        <ErrorContext.Provider value={errorHandler}>
+          <ThemeProvider theme={theme}>
+            <CssBaseline enableColorScheme />
+
+
+            <Router>
+              <AppBar position="sticky">
+                <Toolbar>
+                  <Typography variant="h6" component="div" sx={{flexGrow: 1}}>
+                    Logo
+                  </Typography>
+                  {isMobile ? (
+                    <>
+                      <InputLabel>{value}</InputLabel>
+                      <Select value={value} onChange={handleSelectChange}>
+                        <MenuItemLink value="home" to="/" primary="Home" />
+                        <MenuItemLink value="available-llms" to="/available-llms" primary="Available LLMs" />
+                        <MenuItemLink value="download-llms" to="/download-llms" primary="Download LLMs" />
+                        <MenuItemLink value="requests" to="/requests" primary="Requests" />
+                        <MenuItemLink value="settings" to="/settings" primary="Settings" />
+                      </Select>
+                    </>
+
+                  ) : (
+                    <Tabs value={value} onChange={handleChange}>
+                      <LinkTab label="Home" to="/" value="home" />
+                      <LinkTab label="Available LLMs" to="/available-llms" value="available-llms" />
+                      <LinkTab label="Download LLMs" to="/download-llms" value="download-llms" />
+                      <LinkTab label="Requests" to="/requests" value="requests" />
+                      <LinkTab label="Settings" to="/settings" value="settings" />
+                    </Tabs>
+                  )}
+                </Toolbar>
+              <Box>
+                {Object.keys(ongoingNotifications).map((streamId, index) => (
+                  <Box sx={{
+                    display: 'flex',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    paddingX: 1,
+                    paddingY: 0.5,
+                  }} key={streamId}>
+                    <Typography sx={{
+                      marginRight: 2,
+                    }}>{ongoingNotifications[streamId].description}</Typography>
+                    {ongoingNotifications[streamId].progress ? <LinearProgress sx={{
+                      flexGrow: 10,
+
+
+                    }}
+                      variant="determinate" value={parseInt(ongoingNotifications[streamId].progress as string)} /> : <LinearProgress sx={{
+
+                      }} variant="indeterminate" />}
+
+                  </Box>
+                ))}
+
+              </Box>
+              </AppBar>
+
+              <Box sx={{
+                p: 3, // padding
+                mx: 'auto', // center the Box horizontally
+                width: '100%', // Full width
+                maxWidth: 'lg', // constrain maximum width to 'lg' breakpoint value
+                bgcolor: 'background.default', // use default background color
+                display: 'flex', // make it a flex container
+                flexDirection: 'column', // arrange children vertically
+              }}>
+                <Routes>
+                  <Route path="/" element={<Home />} />
+                  <Route path="/available-llms" element={<AvailableLLMs />} />
+                  <Route path="/download-llms" element={<DownloadLLMs />} />
+                  <Route path="/requests" element={<Requests />} />
+                  <Route path="/settings" element={<Settings />} />
+                </Routes>
+              </Box>
+              <Modal open={downloadModalOpen} onClose={() => setDownloadModalOpen(false)}>
+                <ModalBox>
+
+                  <Card className="available-llm">
+                    <CardContent>
+                      <LLMInfo llm={downloadRegistryEntry} rightButton={null} />
+                      <Typography variant="body1"><b>Requirements:</b> {downloadRegistryEntry.requirements}</Typography>
+                      <Typography variant="body1"><b>User Parameters:</b> {downloadRegistryEntry.userParameters.join(", ")}</Typography>
+                      <Typography variant="body1"><b>Capabilities:</b> {JSON.stringify(downloadRegistryEntry.capabilities)}</Typography>
+
+                      <Button onClick={handleBookmark} variant="outlined">Bookmark</Button><Button onClick={handleDownload} variant="contained">Download</Button>
+                    </CardContent>
+                  </Card>
+                </ModalBox>
+              </Modal>
+            </Router>
+
+
+          </ThemeProvider>
+        </ErrorContext.Provider >
+      </ColorContext.Provider >
+
+    );
+  }
+
+  export default App;
+
+
+///* <Route path="/history/:id" element={<History />} /> */

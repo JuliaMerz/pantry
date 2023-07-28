@@ -14,8 +14,6 @@ use tokio_util::sync::CancellationToken;
 
 use uuid::Uuid;
 
-
-
 //src/connectors/llm_actor.rs
 
 pub struct LLMActor {
@@ -120,26 +118,6 @@ impl Message for PromptSessionMessage {
     type Response = Result<(), String>;
 }
 
-#[derive(Clone, Debug)]
-pub struct GetLLMSessionsMessage {
-    pub user: User,
-}
-
-impl Message for GetLLMSessionsMessage {
-    type Response = Result<Vec<llm::LLMSession>, String>;
-}
-
-#[async_trait]
-impl Handler<connectors::SysEvent, GetLLMSessionsMessage> for LLMActor {
-    async fn handle(
-        &mut self,
-        msg: GetLLMSessionsMessage,
-        _ctx: &mut ActorContext<connectors::SysEvent>,
-    ) -> Result<Vec<llm::LLMSession>, String> {
-        self.llm_internal.as_ref().get_sessions(msg.user).await
-    }
-}
-
 #[async_trait]
 impl Handler<connectors::SysEvent, IDMessage> for LLMActor {
     async fn handle(
@@ -195,6 +173,8 @@ impl Handler<connectors::SysEvent, PromptSessionMessage> for LLMActor {
             )
             .await;
         msg.cancellation_token.cancel();
+        println!("TEST");
+        self.llm_internal.maintenance().await;
         match result {
             Ok(()) => {
                 println!("Completed inference successfully.");
@@ -205,5 +185,24 @@ impl Handler<connectors::SysEvent, PromptSessionMessage> for LLMActor {
                 Ok(())
             }
         }
+    }
+}
+
+// Message to unload an existing LLMActor
+#[derive(Clone, Debug)]
+pub struct PreUnloadMessage();
+
+impl Message for PreUnloadMessage {
+    type Response = Result<(), String>;
+}
+
+#[async_trait]
+impl Handler<connectors::SysEvent, PreUnloadMessage> for LLMActor {
+    async fn handle(
+        &mut self,
+        msg: PreUnloadMessage,
+        _ctx: &mut ActorContext<connectors::SysEvent>,
+    ) -> Result<(), String> {
+        self.llm_internal.pre_unload().await
     }
 }

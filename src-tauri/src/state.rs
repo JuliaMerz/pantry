@@ -1,18 +1,17 @@
 use crate::connectors; //::LLMRegistryEntry;
 use crate::connectors::llm_manager;
 
-
 use crate::llm;
- //::LLMRegistryEntry;
+//::LLMRegistryEntry;
 
-
-use dashmap::{DashMap};
+use dashmap::DashMap;
 use diesel::prelude::*;
 use diesel::r2d2::ConnectionManager;
 use diesel::r2d2::Pool;
 use keyring;
 use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use tauri::AppHandle;
 
 use std::ops::Deref;
 use std::path::PathBuf;
@@ -94,6 +93,7 @@ pub struct UserSettings {
     location: PathBuf,
     pub settings_path: PathBuf,
     pub openai_key: KeychainEntry,
+    pub preferred_active_sessions: usize,
     pub use_gpu: bool,
     pub n_thread: usize,
     pub n_batch: usize,
@@ -123,6 +123,7 @@ impl UserSettings {
             location,
             settings_path: app_location,
             openai_key: KeychainEntry::new("openai").unwrap(), // replace with actual default
+            preferred_active_sessions: 2,
             use_gpu: false,
             n_thread: 4,
             n_batch: 1,
@@ -143,6 +144,7 @@ pub struct UserSettingsInfo {
     pub use_gpu: bool,
     pub n_thread: usize,
     pub n_batch: usize,
+    pub preferred_active_sessions: usize,
 }
 
 impl From<&UserSettings> for UserSettingsInfo {
@@ -151,6 +153,7 @@ impl From<&UserSettings> for UserSettingsInfo {
             use_gpu: user_settings.use_gpu.clone(),
             n_thread: user_settings.n_thread.clone(),
             n_batch: user_settings.n_batch.clone(),
+            preferred_active_sessions: user_settings.preferred_active_sessions.clone(),
         }
     }
 }
@@ -173,6 +176,8 @@ pub struct GlobalState {
     pub user_settings: RwLock<UserSettings>,
     pub manager_addr: ActorRef<connectors::SysEvent, llm_manager::LLMManagerActor>,
     pub activated_llms: DashMap<Uuid, llm::LLMActivated>,
+    pub local_path: PathBuf,
+    pub handle: AppHandle,
     // pub available_llms: DashMap<Uuid, Arc<llm::LLM>>,
     pub pool: Pool<ConnectionManager<SqliteConnection>>,
 }
@@ -183,15 +188,17 @@ pub struct GlobalState {
 pub fn create_global_state(
     addr: ActorRef<connectors::SysEvent, llm_manager::LLMManagerActor>,
     activated_llms: DashMap<Uuid, llm::LLMActivated>,
-    _available_llms: DashMap<Uuid, Arc<llm::LLM>>,
-    settings_path: PathBuf,
+    handle: AppHandle,
+    local_path: PathBuf,
     pool: Pool<ConnectionManager<SqliteConnection>>,
 ) -> GlobalStateWrapper {
     GlobalStateWrapper {
         state: Arc::new(GlobalState {
             manager_addr: addr,
-            user_settings: RwLock::new(UserSettings::new(settings_path)), // We initialize user settings after global state
+            user_settings: RwLock::new(UserSettings::new(local_path.clone())), // We initialize user settings after global state
             activated_llms,
+            local_path,
+            handle,
             pool: pool,
         }),
     }

@@ -12,8 +12,9 @@ use chrono::DateTime;
 use chrono::Utc;
 use serde_json::Value;
 use std::collections::HashMap;
+use tauri::AppHandle;
 use tauri::Manager;
-use tauri::{AppHandle};
+use url::Url;
 use uuid::Uuid;
 
 //
@@ -37,13 +38,13 @@ pub struct LLMInfo {
     pub description: String,
 
     // 0 is not capable, -1 is not evaluated.
-    pub capabilities: HashMap<String, isize>,
+    pub capabilities: HashMap<String, i32>,
     pub requirements: String,
     pub tags: Vec<String>,
 
     pub url: String,
 
-    pub create_thread: bool, //TODO: Rename this, it basically means local now
+    pub local: bool, //TODO: Rename this, it basically means local now
     pub connector_type: String,
     pub config: HashMap<String, Value>, // Connector Configs Parameters
 
@@ -69,7 +70,7 @@ pub struct LLMRunningInfo {
 }
 
 #[derive(serde::Serialize, Debug)]
-pub struct LLMAvailable {
+pub struct LLMAvailableInfo {
     pub llm_info: LLMInfo,
     pub downloaded: String,
     #[serde(with = "ts_seconds_option")]
@@ -78,15 +79,10 @@ pub struct LLMAvailable {
 }
 
 #[derive(serde::Serialize)]
-pub struct LLMRequest {
+pub struct LLMRequestInfo {
     pub llm_info: LLMInfo,
     pub source: String, //For compatibility with the string based enum in typescript
     pub requester: String,
-}
-
-#[derive(serde::Serialize)]
-pub struct LLMStatus {
-    pub status: String,
 }
 
 // so far, we allow three conversions:
@@ -114,7 +110,7 @@ impl From<&llm::LLM> for LLMInfo {
             requirements: value.requirements.clone(),
             url: value.url.clone(),
             tags: value.tags.0.clone(),
-            create_thread: value.create_thread.clone(),
+            local: value.local.clone(),
 
             connector_type: value.connector_type.to_string(),
             config: value.config.0.clone(),
@@ -143,9 +139,9 @@ impl From<&llm::LLMActivated> for LLMRunningInfo {
     }
 }
 
-impl From<&llm::LLM> for LLMAvailable {
+impl From<&llm::LLM> for LLMAvailableInfo {
     fn from(value: &llm::LLM) -> Self {
-        LLMAvailable {
+        LLMAvailableInfo {
             llm_info: value.into(),
             uuid: value.uuid.to_string(),
             downloaded: value.downloaded_reason.clone(),
@@ -156,8 +152,8 @@ impl From<&llm::LLM> for LLMAvailable {
 
 #[tauri::command]
 pub async fn get_requests(
-    _state: tauri::State<'_, state::GlobalStateWrapper>,
-) -> Result<CommandResponse<Vec<LLMRequest>>, String> {
+    state: tauri::State<'_, state::GlobalStateWrapper>,
+) -> Result<CommandResponse<Vec<LLMRequestInfo>>, String> {
     // let requests = state.get_requests().await;
     println!("received command get_reqs");
 
@@ -178,16 +174,30 @@ pub async fn get_requests(
         homepage: "https://platform.openai.com/docs/introduction".into(),
         license: "commercial".into(),
         tags: vec!["test".into(), "request".into()],
-        create_thread: false,
+        local: false,
         requirements: "openai api key".into(),
     };
-    let mock = LLMRequest {
+    let mock = LLMRequestInfo {
         llm_info: mock_llm,
         source: "mock".into(),
         requester: "fake".into(),
     };
     Ok(CommandResponse { data: vec![mock] })
     // Err("boop".into())
+}
+
+#[tauri::command]
+pub async fn accept_request(
+    state: tauri::State<'_, state::GlobalStateWrapper>,
+) -> Result<CommandResponse<Vec<LLMRequestInfo>>, String> {
+    todo!()
+}
+
+#[tauri::command]
+pub async fn reject_request(
+    state: tauri::State<'_, state::GlobalStateWrapper>,
+) -> Result<CommandResponse<Vec<LLMRequestInfo>>, String> {
+    todo!()
 }
 
 #[tauri::command]
@@ -207,10 +217,12 @@ pub async fn active_llms(
 
 #[tauri::command]
 pub async fn available_llms(
+    app: tauri::AppHandle,
     state: tauri::State<'_, state::GlobalStateWrapper>,
-) -> Result<CommandResponse<Vec<LLMAvailable>>, String> {
+) -> Result<CommandResponse<Vec<LLMAvailableInfo>>, String> {
     println!("received command available_llms");
-    let available_llms_iter = database::get_available_llms(state.pool.clone())?;
+    let available_llms_iter = database::get_available_llms(state.pool.clone())
+        .map_err(|err| format!("Database failure: {:?}", err))?;
     // let mut available_llms: Vec<LLMAvailable> = Vec::new();
     // for val in available_llms_iter {
     //     available_llms.push(val.value().clone().as_ref().into())
@@ -314,6 +326,7 @@ pub async fn load_llm(
 ) -> Result<(), String> {
     // let uuid = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
     let uuid = Uuid::parse_str(&uuid).map_err(|e| e.to_string())?;
+
     println!("Attempting to load an LLM");
     if state.activated_llms.contains_key(&uuid) {
         return Err("llm already loaded".into());
@@ -321,7 +334,8 @@ pub async fn load_llm(
 
     let manager_addr_copy = state.manager_addr.clone();
 
-    let new_llm = database::get_llm(uuid, state.pool.clone())?;
+    let new_llm = database::get_llm(uuid, state.pool.clone())
+        .map_err(|err| format!("Database failure: {:?}", err))?;
 
     let path = app
         .path_resolver()
@@ -405,7 +419,7 @@ pub async fn get_sessions(
     llm_uuid: String,
     _app: AppHandle,
     state: tauri::State<'_, state::GlobalStateWrapper>,
-) -> Result<CommandResponse<Vec<llm::LLMSession>>, String> {
+) -> Result<CommandResponse<Vec<(llm::LLMSession, Vec<llm::LLMHistoryItem>)>>, String> {
     let uuid = Uuid::parse_str(&llm_uuid).map_err(|e| e.to_string())?;
     println!(
         "Frontend called get_sessions with LLM UUID {:?} and user {:?}",
@@ -486,9 +500,9 @@ pub async fn prompt_session(
                         prompt_response.stream,
                         app,
                         |stream_id, event| {
-                            let event = emitter::EventType::LLMResponse(event);
+                            let event = emitter::EmitterEventPayload::LLMResponse(event);
 
-                            Ok(emitter::EventPayload {
+                            Ok(emitter::EmitterEvent {
                                 stream_id: stream_id,
                                 event: event,
                             })
@@ -549,9 +563,9 @@ pub async fn call_llm(
                         llm_resp.stream,
                         app,
                         |stream_id, blah| {
-                            let event = emitter::EventType::LLMResponse(blah);
+                            let event = emitter::EmitterEventPayload::LLMResponse(blah);
 
-                            Ok(emitter::EventPayload {
+                            Ok(emitter::EmitterEvent {
                                 stream_id: stream_id,
                                 event: event,
                             })
@@ -629,7 +643,7 @@ pub async fn delete_llm(
     }
     match database::delete_llm(uuid, state.pool.clone()) {
         Ok(_) => Ok(()),
-        Err(_err) => Err("Unable to find and delte llm".into()),
+        Err(_err) => Err("Unable to find and delete llm".into()),
     }
 }
 

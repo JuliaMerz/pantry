@@ -1,7 +1,7 @@
 use crate::state;
-use crate::{llm::LLMSession, registry::LLMRegistryEntryConnector, user};
+use crate::{llm::LLMSession, user};
 use chrono::prelude::*;
-use diesel::deserialize::{FromSql};
+use diesel::deserialize::FromSql;
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool};
 use diesel::serialize::{self, Output, ToSql};
@@ -16,8 +16,6 @@ use tiny_tokio_actor::*;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
-
-
 
 pub mod factory;
 pub mod llm_actor;
@@ -37,6 +35,7 @@ impl SystemEvent for SysEvent {}
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Copy, Debug, FromSqlRow, AsExpression)]
 #[diesel(sql_type = diesel::sql_types::Text)]
+#[serde(rename_all = "lowercase")]
 pub enum LLMConnectorType {
     GenericAPI,
     LLMrs,
@@ -111,23 +110,12 @@ pub fn get_new_llm_connector(
     }
 }
 
-// Conversion from the format used by the index into our internal typing
-impl From<LLMRegistryEntryConnector> for LLMConnectorType {
-    fn from(value: LLMRegistryEntryConnector) -> Self {
-        match value {
-            LLMRegistryEntryConnector::GenericAPI => LLMConnectorType::GenericAPI,
-            LLMRegistryEntryConnector::Ggml => LLMConnectorType::LLMrs,
-            LLMRegistryEntryConnector::LLMrs => LLMConnectorType::LLMrs,
-            LLMRegistryEntryConnector::OpenAI => LLMConnectorType::OpenAI,
-        }
-    }
-}
-
 /* Actually connect to the LLMs */
 #[async_trait]
 pub trait LLMInternalWrapper: Send + Sync {
     // async fn call_llm(self: &mut Self, msg: String, session_params: HashMap<String, Value>, params: HashMap<String, Value>, user: user::User, sender: mpsc::Sender<LLMEvent>) -> Result<Uuid, String>;
-    async fn get_sessions(self: &Self, user: user::User) -> Result<Vec<LLMSession>, String>;
+    // kill get_sessions, they should be in the db now.
+    // async fn get_sessions(self: &Self, user: user::User) -> Result<Vec<LLMSession>, String>;
     //mut because we're going to modify our internal session storage
     async fn create_session(
         self: &mut Self,
@@ -146,7 +134,9 @@ pub trait LLMInternalWrapper: Send + Sync {
     ) -> Result<(), String>;
 
     async fn load_llm(self: &mut Self) -> Result<(), String>;
+    async fn pre_unload(self: &Self) -> Result<(), String>; //called by manager before shutdown
     async fn unload_llm(self: &Self) -> Result<(), String>; //called by shutdown
+    async fn maintenance(self: &mut Self) -> Result<(), String>;
 }
 
 #[derive(Clone, serde::Serialize, Debug)]

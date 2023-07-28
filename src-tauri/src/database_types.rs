@@ -1,7 +1,4 @@
-
-
-
-use diesel::deserialize::{FromSql};
+use diesel::deserialize::FromSql;
 
 use diesel::query_builder::QueryId;
 use diesel::serialize::{self, Output, ToSql};
@@ -9,20 +6,18 @@ use diesel::serialize::{self, Output, ToSql};
 use diesel::*;
 use uuid::Uuid;
 
-
 use diesel::sqlite::{Sqlite, SqliteValue};
 use serde_json;
-use serde_json::{Value};
+use serde_json::Value;
 use std::collections::HashMap;
 
 use std::ops::Deref;
 use std::path::PathBuf;
 
-
 // Type conversions for diesel database usage.
 //
 
-// SerdeJsonIntMap(HashMap<String, isize>);
+// SerdeJsonIntMap(HashMap<String, i32>);
 // SerdeJsonVec(Vec<String>);
 // SerdeJsonHashMap(HashMap<String, Value>);
 // SerdeJsonRwTimestamp(RwLock<Option<DateTime<Utc>>>);
@@ -32,18 +27,18 @@ use std::path::PathBuf;
     serde::Deserialize, serde::Serialize, Debug, Clone, PartialEq, FromSqlRow, AsExpression,
 )]
 #[diesel(sql_type = diesel::sql_types::Text)]
-pub struct DbHashMapInt(pub HashMap<String, isize>);
+pub struct DbHashMapInt(pub HashMap<String, i32>);
 
 impl FromSql<diesel::sql_types::Text, Sqlite> for DbHashMapInt {
     fn from_sql(bytes: SqliteValue<'_, '_, '_>) -> diesel::deserialize::Result<Self> {
         let str = <String as FromSql<diesel::sql_types::Text, Sqlite>>::from_sql(bytes)?;
-        let value: HashMap<String, isize> = serde_json::from_str(&str)?;
+        let value: HashMap<String, i32> = serde_json::from_str(&str)?;
         Ok(DbHashMapInt(value))
     }
 }
 
-impl ToSql<DbHashMapInt, Sqlite> for DbHashMapInt {
-    fn to_sql<'W>(&'W self, out: &mut Output<'W, '_, Sqlite>) -> serialize::Result {
+impl ToSql<diesel::sql_types::Text, Sqlite> for DbHashMapInt {
+    fn to_sql<'b>(&'b self, out: &mut Output<'b, '_, Sqlite>) -> serialize::Result {
         let str = serde_json::to_string(&self.0)?;
         // str.to_sql(out);
         out.set_value(str);
@@ -52,7 +47,7 @@ impl ToSql<DbHashMapInt, Sqlite> for DbHashMapInt {
 }
 
 impl Deref for DbHashMapInt {
-    type Target = HashMap<String, isize>;
+    type Target = HashMap<String, i32>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -75,7 +70,7 @@ impl FromSql<diesel::sql_types::Text, Sqlite> for DbVecString {
 }
 
 impl ToSql<diesel::sql_types::Text, Sqlite> for DbVecString {
-    fn to_sql<'W>(&'W self, out: &mut serialize::Output<'W, '_, Sqlite>) -> serialize::Result {
+    fn to_sql<'b>(&'b self, out: &mut serialize::Output<'b, '_, Sqlite>) -> serialize::Result {
         let str = serde_json::to_string(&self.0)?;
         out.set_value(str);
         Ok(serialize::IsNull::No)
@@ -109,7 +104,7 @@ impl<T: serde::Serialize + serde::de::DeserializeOwned + std::fmt::Debug>
 impl<T: serde::Serialize + serde::de::DeserializeOwned + std::fmt::Debug>
     ToSql<diesel::sql_types::Text, Sqlite> for DbVec<T>
 {
-    fn to_sql<'W>(&'W self, out: &mut serialize::Output<'W, '_, Sqlite>) -> serialize::Result {
+    fn to_sql<'b>(&'b self, out: &mut serialize::Output<'b, '_, Sqlite>) -> serialize::Result {
         let str = serde_json::to_string(&self.0)?;
         out.set_value(str);
         Ok(serialize::IsNull::No)
@@ -140,7 +135,7 @@ impl FromSql<diesel::sql_types::Text, Sqlite> for DbHashMap {
 }
 
 impl ToSql<diesel::sql_types::Text, Sqlite> for DbHashMap {
-    fn to_sql<'W>(&self, out: &mut serialize::Output<'W, '_, Sqlite>) -> serialize::Result {
+    fn to_sql<'b>(&self, out: &mut serialize::Output<'b, '_, Sqlite>) -> serialize::Result {
         let str = serde_json::to_string(&self.0)?;
         out.set_value(str);
         Ok(serialize::IsNull::No)
@@ -183,7 +178,7 @@ impl Deref for DbHashMap {
 // impl ToSql<diesel::sql_types::Nullable<diesel::sql_types::TimestamptzSqlite>, Sqlite>
 //     for DbRwDateTime
 // {
-//     fn to_sql<'W>(&self, out: &mut serialize::Output<'W, '_, Sqlite>) -> serialize::Result {
+//     fn to_sql<'b>(&self, out: &mut serialize::Output<'b, '_, Sqlite>) -> serialize::Result {
 //         let value = self.0.read().unwrap().deref();
 //         match value {
 //             Some(inner) => <chrono::DateTime<chrono::Utc> as ToSql<
@@ -219,7 +214,7 @@ impl Deref for DbHashMap {
 // }
 
 // impl ToSql<diesel::sql_types::Text, Sqlite> for DbRwDateTime {
-//     fn to_sql<'W>(&self, out: &mut serialize::Output<'W, '_, Sqlite>) -> serialize::Result {
+//     fn to_sql<'b>(&self, out: &mut serialize::Output<'b, '_, Sqlite>) -> serialize::Result {
 //         let value = self.0.read().unwrap();
 //         let str = serde_json::to_string(&*value)?;
 //         out.set_value(str);
@@ -250,7 +245,7 @@ impl FromSql<diesel::sql_types::Text, Sqlite> for DbPathBuf {
 }
 
 impl ToSql<diesel::sql_types::Text, Sqlite> for DbPathBuf {
-    fn to_sql<'W>(&self, out: &mut serialize::Output<'W, '_, Sqlite>) -> serialize::Result {
+    fn to_sql<'b>(&self, out: &mut serialize::Output<'b, '_, Sqlite>) -> serialize::Result {
         out.set_value(self.0.to_str().unwrap().clone().to_owned());
         Ok(serialize::IsNull::No)
     }
@@ -284,7 +279,7 @@ impl FromSql<diesel::sql_types::Nullable<diesel::sql_types::Text>, Sqlite> for D
 }
 
 impl ToSql<diesel::sql_types::Nullable<diesel::sql_types::Text>, Sqlite> for DbOptionPathbuf {
-    fn to_sql<'W>(&self, out: &mut serialize::Output<'W, '_, Sqlite>) -> serialize::Result {
+    fn to_sql<'b>(&self, out: &mut serialize::Output<'b, '_, Sqlite>) -> serialize::Result {
         match self.0.clone() {
             Some(path) => {
                 out.set_value(path.to_str().unwrap().clone().to_owned());
@@ -305,7 +300,15 @@ impl Deref for DbOptionPathbuf {
 
 // For Uuid
 #[derive(
-    serde::Deserialize, serde::Serialize, Debug, Clone, PartialEq, FromSqlRow, AsExpression,
+    serde::Deserialize,
+    serde::Serialize,
+    Debug,
+    Clone,
+    PartialEq,
+    FromSqlRow,
+    AsExpression,
+    Eq,
+    Hash,
 )]
 #[diesel(sql_type = diesel::sql_types::Text)]
 pub struct DbUuid(pub Uuid);
@@ -318,7 +321,7 @@ impl FromSql<diesel::sql_types::Text, Sqlite> for DbUuid {
 }
 
 impl ToSql<diesel::sql_types::Text, Sqlite> for DbUuid {
-    fn to_sql<'W>(&self, out: &mut serialize::Output<'W, '_, Sqlite>) -> serialize::Result {
+    fn to_sql<'b>(&self, out: &mut serialize::Output<'b, '_, Sqlite>) -> serialize::Result {
         out.set_value(self.0.to_string());
         Ok(serialize::IsNull::No)
     }
@@ -331,6 +334,7 @@ impl Deref for DbUuid {
         &self.0
     }
 }
+
 // Add QueryId implementation
 impl QueryId for DbUuid {
     type QueryId = Self;

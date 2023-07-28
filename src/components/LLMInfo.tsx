@@ -1,13 +1,21 @@
 // src/components/LLMInfo.tsx
+import {forwardRef, useState, useMemo, useContext, useEffect} from "react";
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import React from 'react';
-import { ReactElement } from 'react';
+import ReactJsonView from 'react-json-view';
+import {ReactElement} from 'react';
+import {InnerCard} from './InnerCard';
+import {writeText, readText} from '@tauri-apps/api/clipboard';
+import {ModalBox} from '../theme';
 import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
+  Button,
   Card,
   CardContent,
   Link,
+  Modal,
   Table,
   Paper,
   TableBody,
@@ -22,14 +30,15 @@ import {
 
 
 
-import { LLM, LLMRegistryEntry } from '../interfaces';
+import {LLM, LLMRegistryEntry, } from '../interfaces';
 
-import { invoke } from '@tauri-apps/api/tauri';
+import {invoke} from '@tauri-apps/api/tauri';
+import {ColorContext} from "../theme";
 
 
 type LLMInfoProps = {
-  llm: LLM|LLMRegistryEntry,
-  rightButton: ReactElement<any>;
+  llm: LLM | LLMRegistryEntry,
+  rightButton: ReactElement<any> | null;
   //MAKE THE BUTTON APPEAR
   //THEN DO THE DOWNLOAD ITSELF
 };
@@ -40,12 +49,16 @@ const LLMInfo: React.FC<LLMInfoProps> = ({
   llm,
   rightButton
 }) => {
+  const [shareModalOpen, setShareModalOpen] = useState(false);
+  const [jsonEdition, setJSONEdition] = useState(llm); //Deep copy hack because it wants json.
+  const [success, setSuccess] = useState(false);
+  const colorMode = useContext(ColorContext);
 
-  const [expanded, setExpanded] = React.useState<string | false>(false);
-  const handleAccordion =
-  (panel: string) => (event: React.SyntheticEvent, newExpanded: boolean) => {
-    setExpanded(newExpanded ? panel : false);
-  };
+  const shareToClipboard = async () => {
+    await writeText(`pantry://download/${btoa(JSON.stringify(jsonEdition))}`);
+    setSuccess(true)
+    setTimeout(() => setSuccess(false), 200);
+  }
 
 
 
@@ -54,7 +67,7 @@ const LLMInfo: React.FC<LLMInfoProps> = ({
       <Box sx={{display: 'flex', justifyContent: 'space-between', mb: 2}}>
         <Box sx={{flexGrow: 3}}>
           <Typography variant="h3">
-              {llm.name} </Typography>
+            {llm.name} </Typography>
           <Typography variant="subtitle2">{llm.id}
           </Typography>
           <Typography variant="body1">{llm.description}</Typography>
@@ -63,89 +76,118 @@ const LLMInfo: React.FC<LLMInfoProps> = ({
           {rightButton}
         </Box>
       </Box>
-      <Box sx={{display: 'flex', gap: 2, mb: 2}}>
+      <Box sx={{display: 'flex', gap: 2, mb: 2, alignItems: "center", justifyContent: 'space-between'}}>
         <Typography><b>License:</b> {llm.license}</Typography>
         <Typography><b>Model Family:</b> {llm.familyId}</Typography>
         <Typography><b>Organization:</b> {llm.organization}</Typography>
+        <Button sx={{
+          margin: 0,
+          justify: 'right',
+        }} onClick={() => setShareModalOpen(true)} variant="outlined">Share</Button>
       </Box>
       <Box>
-        <Accordion variant="innerCard" expanded={expanded === 'interface'} onChange={handleAccordion('interface')}>
-          <AccordionSummary variant="innerCard" aria-controls="panel1d-content" id="panel1d-header">
-            <Typography>Details</Typography>
-          </AccordionSummary>
-          <AccordionDetails variant="innerCard">
-            <Box>
-              <Typography variant="h4">Additional Configs</Typography>
-              <Typography variant="h5">User Parameters</Typography>
-              {Object.keys(llm.userParameters).length > 0 ? (
-                <TableContainer component={Paper}>
-                  <Table size="small" aria-label="llm details">
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>Parameter</TableCell>
+        <InnerCard title={"Details"}>
+          <Box>
+            <Typography variant="h4">Additional Configs</Typography>
+            <Typography variant="h5">User Parameters</Typography>
+            {Object.keys(llm.userParameters).length > 0 ? (
+              <TableContainer component={Paper}>
+                <Table size="small" aria-label="llm details">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Parameter</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {llm.userParameters.map((paramName, index) => (
+                      <TableRow key={index}>
+                        <TableCell>{paramName}</TableCell>
                       </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {llm.userParameters.map((paramName, index) => (
-                        <TableRow key={index}>
-                          <TableCell>{paramName}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-              ) : null}
-              <Typography variant="h5">System Configs</Typography>
-              <Typography variant="h6">Parameters</Typography>
-              {Object.keys(llm.parameters).length > 0 ? (
-                <TableContainer component={Paper}>
-                  <Table size="small" aria-label="llm details">
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>Parameter</TableCell>
-                        <TableCell>Value</TableCell>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            ) : null}
+            <Typography variant="h5">System Configs</Typography>
+            <Typography variant="h6">Parameters</Typography>
+            {Object.keys(llm.parameters).length > 0 ? (
+              <TableContainer component={Paper}>
+                <Table size="small" aria-label="llm details">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Parameter</TableCell>
+                      <TableCell>Value</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {Object.entries(llm.parameters).map(([paramName, paramValue], index) => (
+                      <TableRow key={index}>
+                        <TableCell>{paramName}</TableCell>
+                        <TableCell>{paramValue}</TableCell>
                       </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {Object.entries(llm.parameters).map(([paramName, paramValue], index) => (
-                        <TableRow key={index}>
-                          <TableCell>{paramName}</TableCell>
-                          <TableCell>{paramValue}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-              ) : null}
-              <Typography variant="body1">
-                <strong>Connector Type: </strong>{llm.connectorType}
-              </Typography>
-              <Typography variant="h6">Connector Config</Typography>
-              {Object.keys(llm.parameters).length > 0 ? (
-                <TableContainer component={Paper}>
-                  <Table size="small" aria-label="llm details">
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>Parameter</TableCell>
-                        <TableCell>Value</TableCell>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            ) : null}
+            <Typography variant="body1">
+              <strong>Connector Type: </strong>{llm.connectorType}
+            </Typography>
+            <Typography variant="h6">Connector Config</Typography>
+            {Object.keys(llm.parameters).length > 0 ? (
+              <TableContainer component={Paper}>
+                <Table size="small" aria-label="llm details">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Parameter</TableCell>
+                      <TableCell>Value</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {Object.entries(llm.config).map(([paramName, paramValue], index) => (
+                      <TableRow key={index}>
+                        <TableCell>{paramName}</TableCell>
+                        <TableCell>{paramValue}</TableCell>
                       </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {Object.entries(llm.config).map(([paramName, paramValue], index) => (
-                        <TableRow key={index}>
-                          <TableCell>{paramName}</TableCell>
-                          <TableCell>{paramValue}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-              ) : null}
-            </Box>
-          </AccordionDetails>
-        </Accordion>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            ) : null}
+          </Box>
+        </InnerCard>
+
+      </Box>
+      <Modal open={shareModalOpen} onClose={() => setShareModalOpen(false)}>
+        <ModalBox>
+          <Card className="available-llm">
+            <CardContent>
+
+              <Typography variant="subtitle1">Click here to copy a deep link: </Typography>
+              <Box sx={{
+                display: 'flex', flexDirection: 'row',
+                border: 1,
+                padding: 1,
+                marginBottom: 2,
+                transition: success ? 'background-color 0.05s ease' : 'background-color 1.5s ease',
+                bgcolor: success ? 'success.light' : 'info',
+                color: success ? 'success.contrastText' : 'gray',
+                overflow: 'hidden',
+                cursor: 'pointer',
+              }}>
+                <ContentCopyIcon sx={{paddingRight: 1}} />
+                <Typography sx={{
+                  overflow: 'hidden',
+
+                }}
+                  onClick={shareToClipboard}>{`pantry://download/${btoa(JSON.stringify(jsonEdition))}`}</Typography></Box>
+              <Typography variant="subtitle1">JSON View:</Typography>
+              <ReactJsonView src={jsonEdition} theme={colorMode.color === 'light' ? 'apathy:inverted' : 'apathy'} />
+            </CardContent>
+          </Card>
+        </ModalBox>
+      </Modal>
     </Box>
-  </Box>
 
   );
 };

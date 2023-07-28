@@ -1,7 +1,7 @@
 // src/pages/History.tsx
 
-import React, { useEffect, useState } from 'react';
-import { LLMAvailable } from '../interfaces';
+import React, {useEffect, useState} from 'react';
+import {LLMAvailable} from '../interfaces';
 import LLMInfo from '../components/LLMInfo';
 import HistoryCard from '../components/HistoryCard';
 
@@ -22,17 +22,18 @@ function History(props: HistoryProps) {
       // More history items...
     ];
 
-    setHistory(fakeHistory);
+    // setHistory(fakeHistory);
   }, []);
 
-  return (
-    <div>
-      <LLMInfo {...props} />
-      {history.map((item, index) => (
-        <HistoryCard key={index} {...item} />
-      ))}
-    </div>
-  );
+  return null
+  // return (
+  //   <div>
+  //     <LLMInfo {...props} />
+  //     {history.map((item, index) => (
+  //       <HistoryCard key={index} {...item} />
+  //     ))}
+  //   </div>
+  // );
 }
 
 export default History;
