@@ -169,9 +169,11 @@ function App() {
         if (streamId in refNotifications.current && event.payload.event.type == "DownloadProgress") {
           setOngoingNotifications((prev) => {
             console.log(prev);
-            prev[streamId].lastId = msgId;
-            prev[streamId].progress = parseInt(event.payload.event.progress);
-            prev[streamId].description = "Downloading LLM ";
+            if (prev[streamId]) {
+              prev[streamId].lastId = msgId;
+              prev[streamId].progress = parseInt(event.payload.event.progress);
+              prev[streamId].description = "Downloading LLM ";
+            }
             return {...prev};
 
           });
@@ -282,6 +284,7 @@ function App() {
                     flexDirection: 'row',
                     alignItems: 'center',
                     paddingX: 1,
+                    background: "background.main",
                     paddingY: 0.5,
                   }} key={streamId}>
                     <Typography sx={{
@@ -292,7 +295,8 @@ function App() {
 
 
                     }}
-                      variant="determinate" value={parseInt(ongoingNotifications[streamId].progress as string)} /> : <LinearProgress sx={{
+                      color="info"
+                      variant="determinate" value={parseInt(ongoingNotifications[streamId].progress as string)} /> : <LinearProgress color="info" sx={{
 
                       }} variant="indeterminate" />}
 
@@ -307,7 +311,6 @@ function App() {
               mx: 'auto', // center the Box horizontally
               width: '100%', // Full width
               maxWidth: 'lg', // constrain maximum width to 'lg' breakpoint value
-              bgcolor: 'background.default', // use default background color
               display: 'flex', // make it a flex container
               flexDirection: 'column', // arrange children vertically
             }}>

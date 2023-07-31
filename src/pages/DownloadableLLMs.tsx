@@ -136,6 +136,7 @@ function DownloadableLLMs() {
     if (validateNewRegistryEntry()) {
       // Fetch the local registry and add the new entry
 
+      applySpecialFields(newRegistryEntry);
       addRegistryEntry(newRegistryEntry, 'local').then(() => refreshData(false));
 
       // Close the modal and reset the newRegistryEntry state

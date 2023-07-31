@@ -177,6 +177,7 @@ pub enum CapabilityType {
     General,
     Assistant,
     Writing,
+    Coding,
 }
 
 impl fmt::Display for CapabilityType {
@@ -185,6 +186,7 @@ impl fmt::Display for CapabilityType {
             CapabilityType::General => write!(f, "general"),
             CapabilityType::Assistant => write!(f, "assistant"),
             CapabilityType::Writing => write!(f, "writing"),
+            CapabilityType::Coding => write!(f, "coding"),
         }
     }
 }
