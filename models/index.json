@@ -19,9 +19,9 @@
         "llm"
       ],
       "capabilities": {
-        "TEXT_COMPLETION": 3,
-        "CONVERSATION": 3,
-        "FREE": 1
+        "general": 3,
+        "assistant": 3,
+        "writing": 1
       },
       "config": {
         "modelArchitecture": "llama"

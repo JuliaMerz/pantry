@@ -157,123 +157,124 @@ function App() {
 
 
 
-    const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
-    useEffect(() => {
-      let unlisten: (() => void) | undefined;
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
 
-      (async () => {
-        unlisten = await listen('downloads', (event: any) => {
-          const msgId = Math.random();
-          const streamId = event.payload.stream_id;
-          if (streamId in refNotifications.current && event.payload.event.type == "DownloadProgress") {
-            setOngoingNotifications((prev) => {
-              prev[streamId].lastId = msgId;
-              prev[streamId].progress = parseInt(event.payload.event.progress);
-              prev[streamId].description = "Downloading LLM ";
-              return {...prev};
+    (async () => {
+      unlisten = await listen('downloads', (event: any) => {
+        const msgId = Math.random();
+        const streamId = event.payload.stream_id;
+        if (streamId in refNotifications.current && event.payload.event.type == "DownloadProgress") {
+          setOngoingNotifications((prev) => {
+            console.log(prev);
+            prev[streamId].lastId = msgId;
+            prev[streamId].progress = parseInt(event.payload.event.progress);
+            prev[streamId].description = "Downloading LLM ";
+            return {...prev};
 
-            });
-          } else {
-            setOngoingNotifications((prev) => {
-              console.log("no match", streamId, refNotifications.current, ongoingNotifications)
-              prev[streamId] = {
-                lastId: msgId,
-                progress: parseInt(event.payload.event.progress),
-                description: "Began downloading LLM ",
-                type: "download"
-              };
-              return {...prev}
-            });
-          }
-
-          setTimeout(() => {
-            if (refNotifications.current[streamId].lastId === msgId) {
-              console.log("DELEITNG", refNotifications.current, msgId)
-              setOngoingNotifications((prev) => {
-                console.log('del', prev);
-                const {[streamId]: _, ...without} = prev;
-                return without;
-              });
-            }
-          }, 3000);
-        });
-      })();
-
-      return () => {unlisten && unlisten();}
-    });
-
-
-
-
-
-    const listenForDeepLink = () => {
-      const unlisten_promise = listen<any>("deep-link-request", (raw_event) => {
-        console.log(raw_event)
-        setLatestEvent(JSON.stringify(raw_event));
-
-        let event: DeepLinkEvent = raw_event.payload as DeepLinkEvent;
-
-        if (event.payload.type == "DownloadEvent") {
-
-
-
-          let registryEntry = toLLMRegistryEntryExternal(JSON.parse(atob(event.payload.base64)));
-
-          console.log("Got registry entry", registryEntry);
-
-          setDownloadRegistryEntry((current) => {
-            return {...downloadRegistryEntry, ...registryEntry}
-          })
-          setDownloadModalOpen(true);
+          });
+        } else {
+          setOngoingNotifications((prev) => {
+            console.log("no match", streamId, refNotifications.current, ongoingNotifications)
+            prev[streamId] = {
+              lastId: msgId,
+              progress: parseInt(event.payload.event.progress),
+              description: "Began downloading LLM ",
+              type: "download"
+            };
+            return {...prev}
+          });
         }
 
-
-
+        setTimeout(() => {
+          if (refNotifications.current[streamId].lastId === msgId) {
+            console.log("DELEITNG", refNotifications.current, msgId)
+            setOngoingNotifications((prev) => {
+              console.log('del', prev);
+              const {[streamId]: _, ...without} = prev;
+              return without;
+            });
+          }
+        }, 3000);
       });
-      return () => {
-        // https://github.com/tauri-apps/tauri/discussions/5194#discussioncomment-3651818
-        unlisten_promise.then(f => f());
-      };
+    })();
+
+    return () => {unlisten && unlisten();}
+  });
+
+
+
+
+
+  const listenForDeepLink = () => {
+    const unlisten_promise = listen<any>("deep-link-request", (raw_event) => {
+      console.log(raw_event)
+      setLatestEvent(JSON.stringify(raw_event));
+
+      let event: DeepLinkEvent = raw_event.payload as DeepLinkEvent;
+
+      if (event.payload.type == "DownloadEvent") {
+
+
+
+        let registryEntry = toLLMRegistryEntryExternal(JSON.parse(atob(event.payload.base64)));
+
+        console.log("Got registry entry", registryEntry);
+
+        setDownloadRegistryEntry((current) => {
+          return {...downloadRegistryEntry, ...registryEntry}
+        })
+        setDownloadModalOpen(true);
+      }
+
+
+
+    });
+    return () => {
+      // https://github.com/tauri-apps/tauri/discussions/5194#discussioncomment-3651818
+      unlisten_promise.then(f => f());
     };
-    useEffect(listenForDeepLink);
+  };
+  useEffect(listenForDeepLink);
 
 
-    return (
-      <ColorContext.Provider value={colorMode}>
-        <ErrorContext.Provider value={errorHandler}>
-          <ThemeProvider theme={theme}>
-            <CssBaseline enableColorScheme />
+  return (
+    <ColorContext.Provider value={colorMode}>
+      <ErrorContext.Provider value={errorHandler}>
+        <ThemeProvider theme={theme}>
+          <CssBaseline enableColorScheme />
 
 
-            <Router>
-              <AppBar position="sticky">
-                <Toolbar>
-                  <Typography variant="h6" component="div" sx={{flexGrow: 1}}>
-                    Logo
-                  </Typography>
-                  {isMobile ? (
-                    <>
-                      <InputLabel>{value}</InputLabel>
-                      <Select value={value} onChange={handleSelectChange}>
-                        <MenuItemLink value="home" to="/" primary="Home" />
-                        <MenuItemLink value="available-llms" to="/available-llms" primary="Available LLMs" />
-                        <MenuItemLink value="download-llms" to="/download-llms" primary="Download LLMs" />
-                        <MenuItemLink value="requests" to="/requests" primary="Requests" />
-                        <MenuItemLink value="settings" to="/settings" primary="Settings" />
-                      </Select>
-                    </>
+          <Router>
+            <AppBar position="sticky">
+              <Toolbar>
+                <Typography variant="h6" component="div" sx={{flexGrow: 1}}>
+                  Logo
+                </Typography>
+                {isMobile ? (
+                  <>
+                    <InputLabel>{value}</InputLabel>
+                    <Select value={value} onChange={handleSelectChange}>
+                      <MenuItemLink value="home" to="/" primary="Home" />
+                      <MenuItemLink value="available-llms" to="/available-llms" primary="Available LLMs" />
+                      <MenuItemLink value="download-llms" to="/download-llms" primary="Download LLMs" />
+                      <MenuItemLink value="requests" to="/requests" primary="Requests" />
+                      <MenuItemLink value="settings" to="/settings" primary="Settings" />
+                    </Select>
+                  </>
 
-                  ) : (
-                    <Tabs value={value} onChange={handleChange}>
-                      <LinkTab label="Home" to="/" value="home" />
-                      <LinkTab label="Available LLMs" to="/available-llms" value="available-llms" />
-                      <LinkTab label="Download LLMs" to="/download-llms" value="download-llms" />
-                      <LinkTab label="Requests" to="/requests" value="requests" />
-                      <LinkTab label="Settings" to="/settings" value="settings" />
-                    </Tabs>
-                  )}
-                </Toolbar>
+                ) : (
+                  <Tabs value={value} onChange={handleChange}>
+                    <LinkTab label="Home" to="/" value="home" />
+                    <LinkTab label="Available LLMs" to="/available-llms" value="available-llms" />
+                    <LinkTab label="Download LLMs" to="/download-llms" value="download-llms" />
+                    <LinkTab label="Requests" to="/requests" value="requests" />
+                    <LinkTab label="Settings" to="/settings" value="settings" />
+                  </Tabs>
+                )}
+              </Toolbar>
               <Box>
                 {Object.keys(ongoingNotifications).map((streamId, index) => (
                   <Box sx={{
@@ -299,51 +300,51 @@ function App() {
                 ))}
 
               </Box>
-              </AppBar>
+            </AppBar>
 
-              <Box sx={{
-                p: 3, // padding
-                mx: 'auto', // center the Box horizontally
-                width: '100%', // Full width
-                maxWidth: 'lg', // constrain maximum width to 'lg' breakpoint value
-                bgcolor: 'background.default', // use default background color
-                display: 'flex', // make it a flex container
-                flexDirection: 'column', // arrange children vertically
-              }}>
-                <Routes>
-                  <Route path="/" element={<Home />} />
-                  <Route path="/available-llms" element={<AvailableLLMs />} />
-                  <Route path="/download-llms" element={<DownloadLLMs />} />
-                  <Route path="/requests" element={<Requests />} />
-                  <Route path="/settings" element={<Settings />} />
-                </Routes>
-              </Box>
-              <Modal open={downloadModalOpen} onClose={() => setDownloadModalOpen(false)}>
-                <ModalBox>
+            <Box sx={{
+              p: 3, // padding
+              mx: 'auto', // center the Box horizontally
+              width: '100%', // Full width
+              maxWidth: 'lg', // constrain maximum width to 'lg' breakpoint value
+              bgcolor: 'background.default', // use default background color
+              display: 'flex', // make it a flex container
+              flexDirection: 'column', // arrange children vertically
+            }}>
+              <Routes>
+                <Route path="/" element={<Home />} />
+                <Route path="/available-llms" element={<AvailableLLMs />} />
+                <Route path="/download-llms" element={<DownloadLLMs />} />
+                <Route path="/requests" element={<Requests />} />
+                <Route path="/settings" element={<Settings />} />
+              </Routes>
+            </Box>
+            <Modal open={downloadModalOpen} onClose={() => setDownloadModalOpen(false)}>
+              <ModalBox>
 
-                  <Card className="available-llm">
-                    <CardContent>
-                      <LLMInfo llm={downloadRegistryEntry} rightButton={null} />
-                      <Typography variant="body1"><b>Requirements:</b> {downloadRegistryEntry.requirements}</Typography>
-                      <Typography variant="body1"><b>User Parameters:</b> {downloadRegistryEntry.userParameters.join(", ")}</Typography>
-                      <Typography variant="body1"><b>Capabilities:</b> {JSON.stringify(downloadRegistryEntry.capabilities)}</Typography>
+                <Card className="available-llm">
+                  <CardContent>
+                    <LLMInfo llm={downloadRegistryEntry} rightButton={null} />
+                    <Typography variant="body1"><b>Requirements:</b> {downloadRegistryEntry.requirements}</Typography>
+                    <Typography variant="body1"><b>User Parameters:</b> {downloadRegistryEntry.userParameters.join(", ")}</Typography>
+                    <Typography variant="body1"><b>Capabilities:</b> {JSON.stringify(downloadRegistryEntry.capabilities)}</Typography>
 
-                      <Button onClick={handleBookmark} variant="outlined">Bookmark</Button><Button onClick={handleDownload} variant="contained">Download</Button>
-                    </CardContent>
-                  </Card>
-                </ModalBox>
-              </Modal>
-            </Router>
+                    <Button onClick={handleBookmark} variant="outlined">Bookmark</Button><Button onClick={handleDownload} variant="contained">Download</Button>
+                  </CardContent>
+                </Card>
+              </ModalBox>
+            </Modal>
+          </Router>
 
 
-          </ThemeProvider>
-        </ErrorContext.Provider >
-      </ColorContext.Provider >
+        </ThemeProvider>
+      </ErrorContext.Provider >
+    </ColorContext.Provider >
 
-    );
-  }
+  );
+}
 
-  export default App;
+export default App;
 
 
 ///* <Route path="/history/:id" element={<History />} /> */

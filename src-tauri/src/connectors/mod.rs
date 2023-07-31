@@ -147,8 +147,33 @@ pub struct LLMEvent {
     parameters: HashMap<String, Value>,
     input: String,
     llm_uuid: Uuid,
-    session: LLMSession,
+    session: LLMSessionStatus,
     event: LLMEventInternal,
+}
+
+// We don't want to expose DbUuid to outside parties.
+// llmevent gets used by listeners (aka the API) so we want
+// a different type for it.
+#[derive(Clone, serde::Serialize, Debug)]
+pub struct LLMSessionStatus {
+    pub id: Uuid, //this is a uuid
+    pub llm_uuid: Uuid,
+    pub user_id: Uuid,
+    pub started: DateTime<Utc>,
+    pub last_called: DateTime<Utc>,
+    pub session_parameters: HashMap<String, Value>,
+}
+impl From<&LLMSession> for LLMSessionStatus {
+    fn from(sess: &LLMSession) -> Self {
+        LLMSessionStatus {
+            id: sess.id.0.clone(), //this is a uuid
+            llm_uuid: sess.llm_uuid.0.clone(),
+            user_id: sess.user_id.0.clone(),
+            started: sess.started.clone(),
+            last_called: sess.last_called.clone(),
+            session_parameters: sess.session_parameters.0.clone(),
+        }
+    }
 }
 
 #[derive(Clone, serde::Serialize, Debug)]

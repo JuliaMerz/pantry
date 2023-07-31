@@ -30,6 +30,7 @@ pub async fn create_listeners(
     let (tx1, rx1) = oneshot::channel::<()>();
     let (tx2, rx2) = oneshot::channel::<()>();
 
+    fs::remove_file("/tmp/pantrylocal.sock");
     let socket_fut = Server::bind_unix("/tmp/pantrylocal.sock")
         .map_err(|err| format!("failed to bind to socket: {:?}", err))?
         .serve(app.clone().into_make_service())
@@ -53,18 +54,37 @@ pub async fn create_listeners(
         tx2.send(());
     });
 
-    // if one crashes we wanna die
-    match tokio::try_join!(flatten(tcp_handle), flatten(unix_handle)) {
-        Ok(_val) => {
+    match tokio::join!(flatten(tcp_handle), flatten(unix_handle)) {
+        (Ok(_val), Ok(_val2)) => {
             println!("Success?!");
             fs::remove_file("/tmp/pantrylocal.sock")
                 .map_err(|err| format!("Error removing file: {:?}", err))
         }
-        Err(err) => {
+        (Err(err), Ok(_)) => {
             println!("Failed with {}.", err);
             Err(err)
         }
+        (Ok(_), Err(err)) => {
+            println!("Failed 2 with {}.", err);
+            Err(err)
+        }
+        (Err(err), Err(err2)) => {
+            println!("Failed double with {} and {}.", err, err2);
+            Err(err)
+        }
     }
+    // if one crashes we DONT wanna die
+    // match tokio::try_join!(flatten(tcp_handle), flatten(unix_handle)) {
+    //     Ok(_val) => {
+    //         println!("Success?!");
+    //         fs::remove_file("/tmp/pantrylocal.sock")
+    //             .map_err(|err| format!("Error removing file: {:?}", err))
+    //     }
+    //     Err(err) => {
+    //         println!("Failed with {}.", err);
+    //         Err(err)
+    //     }
+    // }
 }
 
 // On windows we only run the TCP one.

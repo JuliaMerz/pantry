@@ -8,9 +8,6 @@ use base64::{
 use diesel::prelude::*;
 use rand::Rng;
 
-
-
-
 use uuid::uuid;
 use uuid::Uuid;
 const CUSTOM_ENGINE: engine::GeneralPurpose =
@@ -27,6 +24,23 @@ pub struct Permissions {
     pub perm_request_download: bool,
     pub perm_request_load: bool,
     pub perm_request_unload: bool,
+    pub perm_view_llms: bool,
+}
+
+impl From<&User> for Permissions {
+    fn from(user: &User) -> Self {
+        Permissions {
+            perm_superuser: user.perm_superuser.clone(),
+            perm_load_llm: user.perm_load_llm.clone(),
+            perm_unload_llm: user.perm_unload_llm.clone(),
+            perm_download_llm: user.perm_download_llm.clone(),
+            perm_session: user.perm_session.clone(),
+            perm_request_download: user.perm_request_download.clone(),
+            perm_request_load: user.perm_request_load.clone(),
+            perm_request_unload: user.perm_request_unload.clone(),
+            perm_view_llms: user.perm_view_llms.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Queryable, Selectable, Insertable)]
@@ -46,6 +60,7 @@ pub struct User {
     pub perm_request_download: bool,
     pub perm_request_load: bool,
     pub perm_request_unload: bool,
+    pub perm_view_llms: bool,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -62,6 +77,7 @@ pub struct UserInfo {
     pub perm_request_download: bool,
     pub perm_request_load: bool,
     pub perm_request_unload: bool,
+    pub perm_view_llms: bool,
 }
 
 impl From<&User> for UserInfo {
@@ -79,6 +95,7 @@ impl From<&User> for UserInfo {
             perm_request_download: user.perm_request_download.clone(),
             perm_request_load: user.perm_request_load.clone(),
             perm_request_unload: user.perm_request_unload.clone(),
+            perm_view_llms: user.perm_view_llms.clone(),
         }
     }
 }
@@ -89,7 +106,7 @@ impl User {
             id: DbUuid(Uuid::new_v4()),
             name: name,
             api_key: generate_api_key(),
-            perm_superuser: false,
+            perm_superuser: true,
             perm_load_llm: false,
             perm_unload_llm: false,
             perm_download_llm: false,
@@ -97,6 +114,7 @@ impl User {
             perm_request_download: false,
             perm_request_load: false,
             perm_request_unload: false,
+            perm_view_llms: false,
         }
     }
 }
@@ -146,5 +164,6 @@ pub fn get_local_user() -> User {
         perm_request_download: false,
         perm_request_load: false,
         perm_request_unload: false,
+        perm_view_llms: false,
     }
 }

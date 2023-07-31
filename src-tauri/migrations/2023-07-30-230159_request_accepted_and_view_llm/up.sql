@@ -1,0 +1,7 @@
+-- Your SQL goes here
+
+ALTER TABLE requests
+	ADD accepted BOOLEAN DEFAULT FALSE NOT NULL;
+
+ALTER TABLE user
+	ADD perm_view_llms BOOLEAN DEFAULT FALSE NOT NULL;

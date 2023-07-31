@@ -73,6 +73,8 @@ fn run_migrations(
     //
     // See the documentation for `MigrationHarness` for
     // all available methods.
+    println!("Mirations:\n{:?}", connection.revert_all_migrations(MIGRATIONS));
+    println!("Mirations:\n{:?}", connection.applied_migrations());
     connection.run_pending_migrations(MIGRATIONS)?;
 
     Ok(())
@@ -128,7 +130,7 @@ async fn main() {
 
     let config = context.config().clone();
 
-    db_path.push("local.sqlite");
+    db_path.push("local2.sqlite");
 
     let _ = diesel::sqlite::SqliteConnection::establish(
         &db_path.clone().into_os_string().into_string().unwrap(),

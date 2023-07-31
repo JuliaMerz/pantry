@@ -60,6 +60,8 @@ diesel::table! {
         reason -> Text,
         timestamp -> TimestamptzSqlite,
         request -> Text,
+        complete -> Bool,
+        accepted -> Bool,
     }
 }
 
@@ -76,6 +78,7 @@ diesel::table! {
         perm_request_download -> Bool,
         perm_request_load -> Bool,
         perm_request_unload -> Bool,
+        perm_view_llms -> Bool,
     }
 }
 
@@ -84,4 +87,10 @@ diesel::joinable!(llm_session -> llm (llm_uuid));
 diesel::joinable!(llm_session -> user (user_id));
 diesel::joinable!(requests -> user (user_id));
 
-diesel::allow_tables_to_appear_in_same_query!(llm, llm_history, llm_session, requests, user,);
+diesel::allow_tables_to_appear_in_same_query!(
+    llm,
+    llm_history,
+    llm_session,
+    requests,
+    user,
+);

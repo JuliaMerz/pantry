@@ -14,10 +14,6 @@ use diesel::*;
 
 use serde_json;
 
-
-
-
-
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, FromSqlRow, AsExpression)]
 #[diesel(sql_type = diesel::sql_types::Text)]
 pub struct DownloadRequest {
@@ -76,7 +72,10 @@ pub struct UserRequest {
     pub user_id: DbUuid,
     pub reason: String,
     pub timestamp: DateTime<Utc>,
+    pub originator: String,
     pub request: UserRequestType,
+    pub complete: bool,
+    pub accepted: bool,
 }
 
 // pub fn serialize_all(

@@ -155,6 +155,8 @@ pub struct UserRequestStatus {
     pub user_id: Uuid,
     pub timestamp: DateTime<Utc>,
     pub request: UserRequestType,
+    pub complete: bool,
+    pub accepted: bool,
 }
 impl From<&UserRequest> for UserRequestStatus {
     fn from(llm_req: &UserRequest) -> Self {
@@ -163,6 +165,8 @@ impl From<&UserRequest> for UserRequestStatus {
             user_id: llm_req.user_id.0.clone(),
             timestamp: llm_req.timestamp.clone(),
             request: llm_req.request.clone(),
+            complete: llm_req.complete.clone(),
+            accepted: llm_req.accepted.clone(),
         }
     }
 }
@@ -246,10 +250,12 @@ struct RegisterUserRequest {
     user_name: String,
 }
 
+#[axum_macros::debug_handler]
 async fn register_user(
     state: State<state::GlobalStateWrapper>,
     Json(payload): Json<RegisterUserRequest>,
 ) -> Result<Json<user::UserInfo>, (StatusCode, String)> {
+    println!("Called register_user from API.");
     let user = user::User::new(payload.user_name);
     match database::save_new_user(user, state.pool.clone()) {
         Ok(user) => Ok(Json((&user).into())),
@@ -271,6 +277,7 @@ async fn request_permissions(
     state: State<state::GlobalStateWrapper>,
     Json(payload): Json<RequestPermissionRequest>,
 ) -> Result<Json<UserRequest>, (StatusCode, String)> {
+    println!("Called request_permissions from API.");
     let user_uuid =
         Uuid::parse_str(&payload.user_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     let user = user_permission_check("", payload.api_key, user_uuid, state.pool.clone())?;
@@ -279,13 +286,17 @@ async fn request_permissions(
         id: DbUuid(Uuid::new_v4()),
         reason: "reason".into(),
         timestamp: chrono::Utc::now(),
+        originator: user.name.clone(),
         user_id: user.id,
         request: UserRequestType::PermissionRequest(request::PermissionRequest {
             requested_permissions: payload.requested_permissions,
         }),
+        complete: false,
+        accepted: false,
     };
 
     let req = database::save_new_request(request, state.pool.clone()).map_err(|err| {
+        println!("failed to save to database because... {:?}", err);
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             "Error saving new request.".into(),
@@ -306,6 +317,7 @@ async fn request_download(
     state: State<state::GlobalStateWrapper>,
     Json(payload): Json<RequestDownloadRequest>,
 ) -> Result<Json<UserRequest>, (StatusCode, String)> {
+    println!("Called request_download from API.");
     let user_uuid =
         Uuid::parse_str(&payload.user_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
 
@@ -320,12 +332,16 @@ async fn request_download(
         id: DbUuid(Uuid::new_v4()),
         timestamp: chrono::Utc::now(),
         reason: "reason".into(),
+        originator: user.name.clone(),
         user_id: user.id,
         request: UserRequestType::DownloadRequest(request::DownloadRequest {
             llm_registry_entry: payload.llm_registry_entry,
         }),
+        complete: false,
+        accepted: false,
     };
     let req = database::save_new_request(request, state.pool.clone()).map_err(|err| {
+        println!("failed to save to database because... {:?}", err);
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             "Error saving new request.".into(),
@@ -340,11 +356,13 @@ struct RequestLoadRequest {
     api_key: String,
     llm_id: String,
 }
+
 #[axum_macros::debug_handler]
 async fn request_load(
     state: State<state::GlobalStateWrapper>,
     Json(payload): Json<RequestLoadRequest>,
 ) -> Result<Json<UserRequest>, (StatusCode, String)> {
+    println!("Called request_load from API.");
     let user_uuid =
         Uuid::parse_str(&payload.user_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     let user = user_permission_check(
@@ -358,13 +376,17 @@ async fn request_load(
         id: DbUuid(Uuid::new_v4()),
         reason: "reason".into(),
         timestamp: chrono::Utc::now(),
+        originator: user.name.clone(),
         user_id: DbUuid(user.id.0),
         request: UserRequestType::LoadRequest(request::LoadRequest {
             llm_id: payload.llm_id,
         }),
+        complete: false,
+        accepted: false,
     };
 
     let req = database::save_new_request(request, state.pool.clone()).map_err(|err| {
+        println!("failed to save to database because... {:?}", err);
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             "Error saving new request.".into(),
@@ -384,6 +406,7 @@ async fn request_unload(
     state: State<state::GlobalStateWrapper>,
     Json(payload): Json<RequestUnloadRequest>,
 ) -> Result<Json<UserRequest>, (StatusCode, String)> {
+    println!("Called request_unload from API.");
     let user_uuid =
         Uuid::parse_str(&payload.user_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     let user = user_permission_check(
@@ -397,12 +420,16 @@ async fn request_unload(
         id: DbUuid(Uuid::new_v4()),
         reason: "reason".into(),
         timestamp: chrono::Utc::now(),
+        originator: user.name.clone(),
         user_id: DbUuid(user.id.0),
         request: UserRequestType::UnloadRequest(request::UnloadRequest {
             llm_id: payload.llm_id,
         }),
+        complete: false,
+        accepted: false,
     };
     let req = database::save_new_request(request, state.pool.clone()).map_err(|err| {
+        println!("failed to save to database because... {:?}", err);
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             "Error saving new request.".into(),
@@ -411,11 +438,315 @@ async fn request_unload(
     Ok(Json(req))
 }
 
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+struct RequestLoadFlexRequest {
+    user_id: String,
+    api_key: String,
+    llm_id: String,
+    filter: Option<LLMFilter>,
+    preference: Option<LLMPreference>,
+}
+
+#[axum_macros::debug_handler]
+async fn request_load_flex(
+    state: State<state::GlobalStateWrapper>,
+    Json(payload): Json<RequestLoadFlexRequest>,
+) -> Result<Json<UserRequest>, (StatusCode, String)> {
+    println!("Called request_load_flex from API.");
+    let user_uuid =
+        Uuid::parse_str(&payload.user_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    let user = user_permission_check(
+        "request_load_llm",
+        payload.api_key.clone(),
+        user_uuid,
+        state.pool.clone(),
+    )?;
+
+    let mut llms = database::get_available_llms(state.pool.clone())
+        .map_err(|err| {
+        println!("failed to save to database because... {:?}", err);
+            (StatusCode::INTERNAL_SERVER_ERROR, "Database Error".into())})?;
+    // let mut llms: Vec<Uuid> = state
+    //     .activated_llms
+    //     .iter()
+    //     .map(|pair| (pair.key()).clone())
+    //     .collect();
+
+    // let llms = llms.into_iter().filter(|llm| )
+
+    if let Some(filter) = payload.filter {
+        if let Some(llm_uuid_filter) = filter.llm_uuid {
+            llms = llms
+                .into_iter()
+                .filter(|llm| llm.uuid.0 == llm_uuid_filter)
+                .collect();
+        }
+        if let Some(llm_id_filter) = filter.llm_id {
+            llms = llms
+                .into_iter()
+                .filter(|llm| llm.id == llm_id_filter)
+                .collect();
+        }
+        if let Some(family_id_filter) = filter.family_id {
+            llms = llms
+                .into_iter()
+                .filter(|llm| llm.family_id == family_id_filter)
+                .collect();
+        }
+
+        if let Some(local_filter) = filter.local {
+            llms = llms
+                .into_iter()
+                .filter(|llm| llm.local == local_filter)
+                .collect();
+        }
+
+        if let Some(capabilities_filter) = filter.minimum_capabilities {
+            for cap_fil in capabilities_filter.into_iter() {
+                let capability_name = cap_fil.capability;
+                let capability_min = cap_fil.value;
+                llms = llms
+                    .into_iter()
+                    .filter(|llm| {
+                        llm.capabilities
+                            .0
+                            .get(&capability_name.to_string())
+                            .is_some_and(|x| x.clone() >= capability_min.into())
+                    })
+                    .collect()
+            }
+        }
+    }
+
+    println!("Filtered LLMS: {:?}", llms);
+
+    if llms.is_empty() {
+        return Err((
+            StatusCode::NOT_FOUND,
+            "No running LLM matching requirements.".into(),
+        ));
+    } else if llms.len() == 1 {
+        return request_load(
+            state,
+            Json(RequestLoadRequest {
+                user_id: payload.user_id,
+                api_key: payload.api_key,
+                llm_id: llms.pop().unwrap().uuid.0.to_string(),
+            }),
+        )
+        .await;
+    }
+
+    let mut capability_pref = CapabilityType::General;
+    if let Some(preference) = payload.preference {
+        // uuid is a singular preference. if we find it, we go.
+        if let Some(uuid_pref) = preference.llm_uuid {
+            if let Some(found) = llms.iter().find(|llm| llm.uuid.0 == uuid_pref) {
+                return request_load(
+                    state,
+                    Json(RequestLoadRequest {
+                        user_id: payload.user_id,
+                        api_key: payload.api_key,
+                        llm_id: llms.pop().unwrap().uuid.0.to_string(),
+                    }),
+                )
+                .await;
+            }
+        }
+
+        // id is a singular preference. if we find it, we go.
+        if let Some(id_pref) = preference.llm_id {
+            if let Some(found) = llms.iter().find(|llm| llm.id == id_pref) {
+                return request_load(
+                    state,
+                    Json(RequestLoadRequest {
+                        user_id: payload.user_id,
+                        api_key: payload.api_key,
+                        llm_id: llms.pop().unwrap().uuid.0.to_string(),
+                    }),
+                )
+                .await;
+            }
+        }
+
+        if let Some(local_pref) = preference.local {
+            let count = llms.iter().filter(|llm| llm.local == local_pref).count();
+            if count > 0 {
+                llms = llms
+                    .into_iter()
+                    .filter(|llm| llm.local == local_pref)
+                    .collect();
+            }
+        }
+
+        if let Some(family_pref) = preference.family_id {
+            let count = llms
+                .iter()
+                .filter(|llm| llm.family_id == family_pref)
+                .count();
+            if count > 0 {
+                llms = llms
+                    .into_iter()
+                    .filter(|llm| llm.family_id == family_pref)
+                    .collect();
+            }
+        }
+
+        if let Some(cap_pref) = preference.capability_type {
+            capability_pref = cap_pref;
+        }
+    }
+
+    // Finally we select the most capability model, based on their preference
+    // or in general
+
+    llms.sort_by(|a, b| {
+        a.capabilities
+            .get(&capability_pref.to_string())
+            .unwrap_or(&-1)
+            .cmp(
+                b.capabilities
+                    .get(&capability_pref.to_string())
+                    .unwrap_or(&-1),
+            )
+    });
+
+    if llms.is_empty() {
+        println!("Major malfunction, LLMs empty should be impossible here.");
+        //fail gracefully
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failure in sorting code, please contact support".into(),
+        ));
+    }
+    return request_load(
+        state,
+        Json(RequestLoadRequest {
+            user_id: payload.user_id,
+            api_key: payload.api_key,
+            llm_id: llms.pop().unwrap().uuid.0.to_string(),
+        }),
+    )
+    .await;
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+pub struct GetLLMStatusRequest {
+    user_id: String,
+    api_key: String,
+    llm_id: String,
+}
+
+#[axum_macros::debug_handler]
+async fn get_llm_status(
+    state: State<state::GlobalStateWrapper>,
+    Json(payload): Json<GetLLMStatusRequest>,
+) -> Result<Json<LLMStatus>, (StatusCode, String)> {
+    println!("Called get_llm_status from API.");
+    let user_uuid =
+        Uuid::parse_str(&payload.user_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    let llm_id =
+        Uuid::parse_str(&payload.llm_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    let user = user_permission_check("view_llms", payload.api_key, user_uuid, state.pool.clone())?;
+    let llm = database::get_llm(llm_id, state.pool.clone())
+        .map_err(|err| {
+            println!("Failed to database: {:?}", err.to_string());
+            (StatusCode::INTERNAL_SERVER_ERROR, "Database Error".into())})?;
+
+    Ok(Json((&llm).into()))
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+pub struct GetAvailableLLMRequest {
+    user_id: String,
+    api_key: String,
+}
+
+#[axum_macros::debug_handler]
+async fn get_available_llms(
+    state: State<state::GlobalStateWrapper>,
+    Json(payload): Json<GetAvailableLLMRequest>,
+) -> Result<Json<Vec<LLMStatus>>, (StatusCode, String)> {
+    println!("Called get_available_llms from API.");
+    let user_uuid =
+        Uuid::parse_str(&payload.user_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    let user = user_permission_check("view_llms", payload.api_key, user_uuid, state.pool.clone())?;
+    let llms = database::get_available_llms(state.pool.clone())
+        .map_err(|err| {
+            println!("Failed to database: {:?}", err.to_string());
+            (StatusCode::INTERNAL_SERVER_ERROR, "Database Error".into())})?;
+
+    Ok(Json(llms.iter().map(|val| (val).into()).collect()))
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+pub struct GetRunningLLMRequest {
+    user_id: String,
+    api_key: String,
+}
+
+#[axum_macros::debug_handler]
+async fn get_running_llms(
+    state: State<state::GlobalStateWrapper>,
+    Json(payload): Json<GetRunningLLMRequest>,
+) -> Result<Json<Vec<LLMStatus>>, (StatusCode, String)> {
+    println!("Called get_running_llms from API.");
+    let user_uuid =
+        Uuid::parse_str(&payload.user_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    let user = user_permission_check("view_llms", payload.api_key, user_uuid, state.pool.clone())?;
+    let llms: Vec<LLMStatus> = state
+        .activated_llms
+        .iter()
+        .map(|pair| pair.value().into())
+        .collect();
+    Ok(Json(llms))
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+pub struct InterruptSessionRequest {
+    user_id: String,
+    api_key: String,
+    llm_uuid: String,
+    session_id: String,
+}
+
+#[axum_macros::debug_handler]
+async fn interrupt_session(
+    state: State<state::GlobalStateWrapper>,
+    Json(payload): Json<InterruptSessionRequest>,
+) -> Result<Json<LLMRunningStatus>, (StatusCode, String)> {
+    println!("Called interrupt_session from API.");
+    let user_uuid =
+        Uuid::parse_str(&payload.user_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    let llm_id =
+        Uuid::parse_str(&payload.llm_uuid).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    let session_id = Uuid::parse_str(&payload.session_id)
+        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    let user = user_permission_check(
+        "prompt_session",
+        payload.api_key,
+        user_uuid,
+        state.pool.clone(),
+    )?;
+    let llm = state
+        .activated_llms
+        .get(&llm_id)
+        .ok_or(format!("LLM not running"))
+        .map_err(|e| (StatusCode::NOT_FOUND, e.to_string()))?;
+    llm.value()
+        .interrupt_session(session_id, user)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(Json((llm.value()).into()))
+}
+
 /* Once a function has selected an LLM, this function isolates the work to actually boot it up */
 async fn llm_loading_assistant(
     state: State<state::GlobalStateWrapper>,
     new_llm: LLM,
 ) -> Result<Json<LLMRunningStatus>, (StatusCode, String)> {
+    println!("Called llm_loading_assistant from API.");
     if state.activated_llms.contains_key(&new_llm.uuid) {
         return Err((StatusCode::OK, "LLM Already Activated".into()));
     }
@@ -457,18 +788,23 @@ async fn load_llm(
     state: State<state::GlobalStateWrapper>,
     Json(payload): Json<LoadLLMRequest>,
 ) -> Result<Json<LLMRunningStatus>, (StatusCode, String)> {
+    println!("Called load_llm from API.");
     let user_uuid =
         Uuid::parse_str(&payload.user_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
 
     let _user = user_permission_check("load_llm", payload.api_key, user_uuid, state.pool.clone())?;
 
     let count = database::count_llm_by_pub_id(payload.llm_id.clone(), state.pool.clone())
-        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database Error".into()))?;
+        .map_err(|err| {
+            println!("Failed to database: {:?}", err.to_string());
+            (StatusCode::INTERNAL_SERVER_ERROR, "Database Error".into())})?;
 
     let new_llm: LLM;
     if count == 1 {
         new_llm = database::get_llm_pub_id(payload.llm_id, state.pool.clone())
-            .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database Error".into()))?;
+            .map_err(|err| {
+                println!("Failed to database: {:?}", err.to_string());
+                (StatusCode::INTERNAL_SERVER_ERROR, "Database Error".into())})?;
     } else {
         let llm_uuid = Uuid::parse_str(&payload.llm_id)
             .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
@@ -487,7 +823,6 @@ struct LoadLLMFlexRequest {
     api_key: String,
     filter: Option<LLMFilter>,
     preference: Option<LLMPreference>,
-    user_session_parameters: HashMap<String, Value>,
 }
 
 #[axum_macros::debug_handler]
@@ -495,12 +830,15 @@ async fn load_llm_flex(
     state: State<state::GlobalStateWrapper>,
     Json(payload): Json<LoadLLMFlexRequest>,
 ) -> Result<Json<LLMRunningStatus>, (StatusCode, String)> {
+    println!("Called load_llm_flex from API.");
     let user_uuid =
         Uuid::parse_str(&payload.user_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     let user = user_permission_check("session", payload.api_key, user_uuid, state.pool.clone())?;
     // We should use currently running LLMs.
     let mut llms = database::get_available_llms(state.pool.clone())
-        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database Error".into()))?;
+        .map_err(|err| {
+            println!("Failed to database: {:?}", err.to_string());
+            (StatusCode::INTERNAL_SERVER_ERROR, "Database Error".into())})?;
     // let mut llms: Vec<Uuid> = state
     //     .activated_llms
     //     .iter()
@@ -644,6 +982,7 @@ async fn unload_llm(
     state: State<state::GlobalStateWrapper>,
     Json(payload): Json<UnloadLLMRequest>,
 ) -> Result<Json<LLMStatus>, (StatusCode, String)> {
+    println!("Called unload_llm from API.");
     let user_uuid =
         Uuid::parse_str(&payload.user_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     // let user = state
@@ -684,6 +1023,7 @@ async fn download_llm(
     state: State<state::GlobalStateWrapper>,
     Json(payload): Json<DownloadLLMRequest>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
+    println!("Called download_llm from API.");
     let user_uuid =
         Uuid::parse_str(&payload.user_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     let user = user_permission_check(
@@ -717,6 +1057,7 @@ async fn create_session(
     state: State<state::GlobalStateWrapper>,
     Json(payload): Json<CreateSessionRequest>,
 ) -> Result<Json<CreateSessionResponse>, (StatusCode, String)> {
+    println!("Called create_session from API.");
     let _user_uuid =
         Uuid::parse_str(&payload.user_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     // let user = state
@@ -751,6 +1092,7 @@ async fn create_session_id(
     state: State<state::GlobalStateWrapper>,
     Json(payload): Json<CreateSessionIdRequest>,
 ) -> Result<Json<CreateSessionResponse>, (StatusCode, String)> {
+    println!("Called create_session_id from API.");
     //Try to match on uuid. if it's not a valid uuid, treat it as a regular id.
     //Edge case: someone names their LLM a uuid.
     match Uuid::parse_str(&payload.llm_id) {
@@ -809,6 +1151,7 @@ async fn create_session_flex(
     state: State<state::GlobalStateWrapper>,
     Json(payload): Json<CreateSessionFlexRequest>,
 ) -> Result<Json<CreateSessionResponse>, (StatusCode, String)> {
+    println!("Called create_session_flex from API.");
     let user_uuid =
         Uuid::parse_str(&payload.user_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     let user = user_permission_check("session", payload.api_key, user_uuid, state.pool.clone())?;
@@ -1043,6 +1386,7 @@ async fn create_session_internal(
     llm: &LLMActivated,
     user_session_parameters: HashMap<String, Value>,
 ) -> Result<Json<CreateSessionResponse>, (StatusCode, String)> {
+    println!("Called create_session_internal from API.");
     match llm.create_session(user_session_parameters, user).await {
         Ok(resp) => Ok(Json(CreateSessionResponse {
             session_parameters: resp.session_parameters,
@@ -1071,6 +1415,7 @@ async fn prompt_session_stream(
     state: State<state::GlobalStateWrapper>,
     Json(payload): Json<PromptSessionStreamRequest>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, serde_json::Error>>>, (StatusCode, String)> {
+    println!("Called prompt_session_stream from API.");
     let user_uuid =
         Uuid::parse_str(&payload.user_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     let llm_uuid =
@@ -1129,6 +1474,12 @@ pub async fn build_server(
             .route("/request_download", post(request_download))
             .route("/request_load", post(request_load))
             .route("/request_unload", post(request_unload))
+            .route("/request_load_flex", post(request_load_flex))
+            .route("/get_llm_status", post(get_llm_status))
+            .route("/get_available_llms", post(get_available_llms))
+            .route("/get_running_llms", post(get_running_llms))
+            .route("/interrupt_session", post(interrupt_session))
+            // .route("/load_session_id", post(load_session_id))
             .route("/load_llm", post(load_llm))
             .route("/load_llm_flex", post(load_llm_flex))
             .route("/unload_llm", post(unload_llm))

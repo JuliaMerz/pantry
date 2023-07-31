@@ -401,7 +401,7 @@ impl LLMInternalWrapper for LLMrsConnector {
                             parameters: new_item.parameters.0.clone(),
                             input: prompt.clone(),
                             llm_uuid: self.uuid.clone(),
-                            session: session_clone,
+                            session: (&session_clone).into(),
                             event: LLMEventInternal::PromptProgress {
                                 previous: update_item.output.clone().into(),
                                 next: t.clone(),
@@ -430,7 +430,7 @@ impl LLMInternalWrapper for LLMrsConnector {
 
                             let send_clone = sender.clone();
                             // we need to grab a new clone that includes the updated session
-                            event_clone.session = llm_session_armed.clone();
+                            event_clone.session = (&*llm_session_armed).into();
                             tokio::task::spawn(async move {
                                 let print_clone = event_clone.event.clone();
                                 send_clone.send(event_clone).await;
