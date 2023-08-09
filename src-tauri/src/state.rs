@@ -94,6 +94,7 @@ pub struct UserSettings {
     pub settings_path: PathBuf,
     pub openai_key: KeychainEntry,
     pub preferred_active_sessions: usize,
+    pub dedup_downloads: bool,
     pub use_gpu: bool,
     pub n_thread: usize,
     pub n_batch: usize,
@@ -123,6 +124,7 @@ impl UserSettings {
             location,
             settings_path: app_location,
             openai_key: KeychainEntry::new("openai").unwrap(), // replace with actual default
+            dedup_downloads: true,
             preferred_active_sessions: 2,
             use_gpu: false,
             n_thread: 4,
@@ -145,6 +147,7 @@ pub struct UserSettingsInfo {
     pub n_thread: usize,
     pub n_batch: usize,
     pub preferred_active_sessions: usize,
+    pub dedup_downloads: bool,
 }
 
 impl From<&UserSettings> for UserSettingsInfo {
@@ -153,6 +156,7 @@ impl From<&UserSettings> for UserSettingsInfo {
             use_gpu: user_settings.use_gpu.clone(),
             n_thread: user_settings.n_thread.clone(),
             n_batch: user_settings.n_batch.clone(),
+            dedup_downloads: user_settings.dedup_downloads.clone(),
             preferred_active_sessions: user_settings.preferred_active_sessions.clone(),
         }
     }
@@ -177,6 +181,7 @@ pub struct GlobalState {
     pub manager_addr: ActorRef<connectors::SysEvent, llm_manager::LLMManagerActor>,
     pub activated_llms: DashMap<Uuid, llm::LLMActivated>,
     pub local_path: PathBuf,
+    pub llm_path: PathBuf,
     pub handle: AppHandle,
     // pub available_llms: DashMap<Uuid, Arc<llm::LLM>>,
     pub pool: Pool<ConnectionManager<SqliteConnection>>,
@@ -190,6 +195,7 @@ pub fn create_global_state(
     activated_llms: DashMap<Uuid, llm::LLMActivated>,
     handle: AppHandle,
     local_path: PathBuf,
+    llm_path: PathBuf,
     pool: Pool<ConnectionManager<SqliteConnection>>,
 ) -> GlobalStateWrapper {
     GlobalStateWrapper {
@@ -198,6 +204,7 @@ pub fn create_global_state(
             user_settings: RwLock::new(UserSettings::new(local_path.clone())), // We initialize user settings after global state
             activated_llms,
             local_path,
+            llm_path,
             handle,
             pool: pool,
         }),

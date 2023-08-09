@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::io::prelude::*;
 
 use crate::connectors;
+use std::path::PathBuf;
 use crate::database;
 use crate::database_types::*;
 use crate::emitter;
@@ -68,13 +69,31 @@ pub async fn download_and_write_llm(
     uuid: Uuid,
     app: tauri::AppHandle,
 ) -> Result<(), Box<dyn std::error::Error>> {
+
+    let state: tauri::State<'_, state::GlobalStateWrapper> = app.state();
+
+    let stream_id = format!("{}-{}", llm_reg.id, uuid.to_string());
+
+    if state.user_settings.read().unwrap().dedup_downloads {
+        if let Ok(llm) = database::get_llm_by_url(llm_reg.url.clone(), state.pool.clone()) {
+
+            return save_new_llm(uuid, llm.model_path.0.unwrap(), stream_id, llm_reg, app);
+
+
+        }
+    }
+
     // Create the request client.
     let client = reqwest::Client::new();
 
-    let mut path = app
-        .path_resolver()
-        .app_local_data_dir()
-        .ok_or(format!("failed to find local data"))?;
+    let state: tauri::State<'_, state::GlobalStateWrapper> = app.state();
+
+    let mut path = state.llm_path.clone();
+
+    // let mut path = app
+    //     .path_resolver()
+    //     .local_data_dir()
+    //     .ok_or(format!("failed to find local data"))?;
     path.push(format!("{}-{}", llm_reg.id, uuid.to_string()));
 
     // Create the file to write into.
@@ -90,7 +109,6 @@ pub async fn download_and_write_llm(
 
     let mut stream = response.bytes_stream();
 
-    let stream_id = format!("{}-{}", llm_reg.id, uuid.to_string());
 
     //TODO: download progress for specific downloads
     let mut update_counter = 0;
@@ -130,6 +148,16 @@ pub async fn download_and_write_llm(
             )?;
         }
     }
+    save_new_llm(uuid, path, stream_id, llm_reg, app)
+}
+
+fn save_new_llm(
+    uuid: Uuid,
+    path: PathBuf,
+    stream_id: String,
+    llm_reg: LLMRegistryEntry,
+    app: tauri::AppHandle,
+) -> Result<(), Box<dyn std::error::Error>> {
 
     let state: tauri::State<'_, state::GlobalStateWrapper> = app.state();
 

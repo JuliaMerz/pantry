@@ -286,46 +286,60 @@ impl LLMInternalWrapper for LLMrsConnector {
     ) -> Result<(), String> {
         // The infer function is blocking, and once we start we can't move to another thread
         // which means we need to move to another thread NOW and return our sender.
-        //
-        // The alternative is acknowledging that we should have passed in the sender
 
         println!("Received call to prompt session");
         let mut sampler = llm::samplers::TopPTopK::default();
-        if let Some(Value::Number(n)) = self.config.get("top_k") {
+        if let Some(Value::Number(n)) = params.get("top_k") {
             if let Some(top_k) = n.as_u64() {
                 sampler.top_k = top_k as usize;
             }
         }
 
-        if let Some(Value::Number(n)) = self.config.get("top_p") {
+        if let Some(Value::Number(n)) = params.get("top_p") {
             if let Some(top_p) = n.as_f64() {
                 sampler.top_p = top_p as f32;
             }
         }
 
-        if let Some(Value::Number(n)) = self.config.get("repeat_penalty") {
+        if let Some(Value::Number(n)) = params.get("repeat_penalty") {
             if let Some(repeat_penalty) = n.as_f64() {
                 sampler.repeat_penalty = repeat_penalty as f32;
             }
         }
 
-        if let Some(Value::Number(n)) = self.config.get("temperature") {
+        if let Some(Value::Number(n)) = params.get("temperature") {
             if let Some(temperature) = n.as_f64() {
                 sampler.temperature = temperature as f32;
             }
         }
 
-        if let Some(Value::String(s)) = self.config.get("bias_tokens") {
+        if let Some(Value::String(s)) = params.get("bias_tokens") {
             if let Ok(bias_tokens) = s.parse() {
                 sampler.bias_tokens = bias_tokens;
             }
         }
 
-        if let Some(Value::Number(n)) = self.config.get("repetition_penalty_last_n") {
+        if let Some(Value::Number(n)) = params.get("repetition_penalty_last_n") {
             if let Some(repetition_penalty_last_n) = n.as_u64() {
                 sampler.repetition_penalty_last_n = repetition_penalty_last_n as usize;
             }
         }
+
+        let mut processed_prompt = prompt;
+        if let Some(Value::String(s)) = params.get("pre_prompt") {
+            if let pre_prompt = s {
+                processed_prompt = pre_prompt.to_owned() + &processed_prompt;
+            }
+        }
+
+        if let Some(Value::String(s)) = params.get("post_prompt") {
+            if let post_prompt = s {
+                processed_prompt = processed_prompt + post_prompt;
+            }
+        }
+
+
+
 
         let _inf_params = llm::InferenceParameters {
             n_threads: self.user_settings.n_thread,
@@ -359,7 +373,7 @@ impl LLMInternalWrapper for LLMrsConnector {
             call_timestamp: Utc::now(),
             complete: false, // initially false, will be set to true once response is received
             parameters: DbHashMap(params.clone()),
-            input: prompt.clone(),
+            input: processed_prompt.clone(),
             output: "".into(),
         };
 
@@ -378,7 +392,7 @@ impl LLMInternalWrapper for LLMrsConnector {
                     .as_ref(),
                 &mut rand::thread_rng(),
                 &llm::InferenceRequest {
-                    prompt: (&prompt).into(),
+                    prompt: (&processed_prompt).into(),
                     parameters: &llm::InferenceParameters::default(),
                     play_back_previous_tokens: false,
                     maximum_token_count: None,
@@ -399,7 +413,7 @@ impl LLMInternalWrapper for LLMrsConnector {
                             timestamp: Utc::now(),
                             call_timestamp: new_item.call_timestamp.clone(),
                             parameters: new_item.parameters.0.clone(),
-                            input: prompt.clone(),
+                            input: processed_prompt.clone(),
                             llm_uuid: self.uuid.clone(),
                             session: (&session_clone).into(),
                             event: LLMEventInternal::PromptProgress {
@@ -410,13 +424,17 @@ impl LLMInternalWrapper for LLMrsConnector {
 
                         let send_clone = sender.clone();
                         let event_clone = event.clone();
+                        let cancel_token = cancellation.clone();
                         tokio::task::spawn(async move {
                             let print_clone = event_clone.event.clone();
-                            send_clone.send(event_clone).await;
+                            if let Err(e) = send_clone.send(event_clone).await {
+                                println!("Error sending, so cancelling.");
+                                cancel_token.cancel();
+                            }
                             println!("Sent an event from llmrs for {:?}", print_clone);
                         });
-
                         let cancel = cancellation.is_cancelled();
+
                         let update_item =
                             database::append_token(update_item, t, cancel, self.pool.clone())
                                 .unwrap();
@@ -437,7 +455,7 @@ impl LLMInternalWrapper for LLMrsConnector {
                                 println!("Sent an event from llmrs for {:?}", print_clone);
                             });
                         }
-                        match cancellation.is_cancelled() {
+                        match cancel {
                             true => Ok(llm::InferenceFeedback::Halt),
                             false => Ok(llm::InferenceFeedback::Continue),
                         }

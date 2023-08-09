@@ -79,6 +79,7 @@ diesel::table! {
         perm_request_load -> Bool,
         perm_request_unload -> Bool,
         perm_view_llms -> Bool,
+        perm_bare_model -> Bool,
     }
 }
 

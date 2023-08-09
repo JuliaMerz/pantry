@@ -135,7 +135,7 @@ const LLMDownloadableInfo: React.FC<LLMDownloadableInfoProps> = ({llm, registry,
               (downloadProgress ?
                 <LinearProgress sx={{width: '100%'}} variant="determinate" value={parseInt(downloadProgress)} />
                 : <LinearProgress sx={{width: '100%'}} variant="indeterminate" />))
-            : <Button variant="contained" onClick={downloadClick} >Download</Button>
+            : llm.downloadState === LLMDownloadState.Downloaded ? <Button variant="contained" onClick={downloadClick}>Redownload</Button> : <Button variant="contained" onClick={downloadClick} >Download</Button>
         } />
         <Typography variant="body1"><b>Requirements:</b> {llm.requirements}</Typography>
         <Typography variant="body1"><b>User Parameters:</b> {llm.userParameters.join(", ")}</Typography>

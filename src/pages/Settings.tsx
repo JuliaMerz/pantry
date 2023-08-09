@@ -26,12 +26,16 @@ function Settings() {
   const [nThread, setNThread] = useState(1);
   const [nBatch, setNBatch] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [preferredActive, setPreferredActive] = useState(3);
+  const [dedupDownloads, setDedupDownloads] = useState(true);
 
   useEffect(() => {
     invoke('get_user_settings').then((settings: any) => {
       setUseGpu(settings.use_gpu);
       setNThread(settings.n_thread);
       setNBatch(settings.n_batch);
+      setPreferredActive(settings.preferred_active_sessions);
+      setDedupDownloads(settings.dedup_downloads);
     });
   }, []);
 
@@ -41,7 +45,9 @@ function Settings() {
       openaiKey ? invoke('set_user_setting', {key: 'openai_key', value: openaiKey}) : Promise.resolve(),
       invoke('set_user_setting', {key: 'use_gpu', value: useGpu}),
       invoke('set_user_setting', {key: 'n_thread', value: nThread}),
-      invoke('set_user_setting', {key: 'n_batch', value: nBatch})
+      invoke('set_user_setting', {key: 'n_batch', value: nBatch}),
+      invoke('set_user_setting', {key: 'preferred_active_sessions', value: preferredActive}),
+      invoke('set_user_setting', {key: 'dedup_downloads', value: dedupDownloads}),
     ])
       .then(() => invoke('get_user_settings'))
       .then((settings: any) => {
@@ -49,6 +55,8 @@ function Settings() {
         setUseGpu(settings.use_gpu);
         setNThread(settings.n_thread);
         setNBatch(settings.n_batch);
+        setPreferredActive(settings.preferred_active_sessions);
+        setDedupDownloads(settings.dedup_downloads);
         setLoading(false);
       })
       .catch((err) => {
@@ -80,10 +88,20 @@ function Settings() {
           onChange={(e) => setNThread(parseInt(e.target.value))}
         />
         <TextField
-          label="Number of Batches"
+          label="Batch Size"
           type="number"
           value={nBatch}
           onChange={(e) => setNBatch(parseInt(e.target.value))}
+        />
+        <TextField
+          label="Preferred Active Sessions (extras will be saved to disk)."
+          type="number"
+          value={preferredActive}
+          onChange={(e) => setPreferredActive(parseInt(e.target.value))}
+        />
+        <FormControlLabel
+          control={<Switch checked={dedupDownloads} onChange={(e) => setDedupDownloads(e.target.checked)} />}
+          label="Dedup Downloads (if a new LLM downlaods from the same URL as an existing LLM, will skip download and use the same model file)"
         />
         <IconButton onClick={handleSave} disabled={loading}>
           {loading ? <CircularProgress size={24} /> : <SaveIcon />}

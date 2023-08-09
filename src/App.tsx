@@ -2,6 +2,7 @@ import {forwardRef, useRef, useState, useMemo, useEffect} from "react";
 import {deepmerge} from "@mui/utils";
 import {listen} from '@tauri-apps/api/event';
 import {produceEmptyRegistryEntry} from './interfaces';
+import {Buffer} from 'buffer';
 import {addRegistryEntry, downloadLLM} from './registryHelpers';
 import reactLogo from "./assets/react.svg";
 import {invoke} from "@tauri-apps/api/tauri";
@@ -10,6 +11,7 @@ import {lightTheme, darkTheme, universal, postUniversal, ColorContext} from './t
 import {ErrorContext} from './context';
 import PopupState, {bindTrigger, bindMenu} from 'material-ui-popup-state';
 import {DeepLinkEvent, toLLMRegistryEntryExternal} from "./interfaces";
+
 
 
 
@@ -48,6 +50,17 @@ import {
   LinearProgress,
 } from '@mui/material';
 
+function jsonToBase64(object: any) {
+  const json = JSON.stringify(object);
+  return Buffer.from(json).toString("base64");
+}
+
+function base64ToJson(base64String: string) {
+  const json = Buffer.from(base64String, "base64").toString();
+  return JSON.parse(json);
+}
+
+
 function LinkTab(props: any) {
   return <Tab component={NavLink} {...props} />;
 }
@@ -70,7 +83,7 @@ interface OngoingNotification {
   progress?: number | string,
   description: string,
   type: "error" | "download" | "inference"
-
+  timeout: number,
 }
 
 function App() {
@@ -106,7 +119,8 @@ function App() {
           let new_error: OngoingNotification = {
             lastId: msgId,
             description: error,
-            type: "download"
+            type: "download",
+            timeout: Date.now() + 3000
           }
 
 
@@ -162,44 +176,48 @@ function App() {
   useEffect(() => {
     let unlisten: (() => void) | undefined;
 
+    setInterval(() => {
+      setOngoingNotifications((prev) => {
+        let newNotifs: {[key: string]: OngoingNotification} = {}
+        for (const [streamId, val] of Object.entries(prev)) {
+          if (val.timeout > Date.now()) {
+            newNotifs[streamId] = val;
+          }
+        }
+        return newNotifs;
+      });
+
+    }, 1000);
+
     (async () => {
       unlisten = await listen('downloads', (event: any) => {
         const msgId = Math.random();
         const streamId = event.payload.stream_id;
         if (streamId in refNotifications.current && event.payload.event.type == "DownloadProgress") {
           setOngoingNotifications((prev) => {
-            console.log(prev);
             if (prev[streamId]) {
               prev[streamId].lastId = msgId;
               prev[streamId].progress = parseInt(event.payload.event.progress);
               prev[streamId].description = "Downloading LLM ";
+              prev[streamId].timeout = Date.now() + 3000;
+            } else {
             }
             return {...prev};
 
           });
         } else {
           setOngoingNotifications((prev) => {
-            console.log("no match", streamId, refNotifications.current, ongoingNotifications)
             prev[streamId] = {
               lastId: msgId,
               progress: parseInt(event.payload.event.progress),
-              description: "Began downloading LLM ",
-              type: "download"
+              description: "Downloading LLM ",
+              type: "download",
+              timeout: Date.now() + 3000
             };
             return {...prev}
           });
         }
 
-        setTimeout(() => {
-          if (refNotifications.current[streamId].lastId === msgId) {
-            console.log("DELEITNG", refNotifications.current, msgId)
-            setOngoingNotifications((prev) => {
-              console.log('del', prev);
-              const {[streamId]: _, ...without} = prev;
-              return without;
-            });
-          }
-        }, 3000);
       });
     })();
 
@@ -221,7 +239,7 @@ function App() {
 
 
 
-        let registryEntry = toLLMRegistryEntryExternal(JSON.parse(atob(event.payload.base64)));
+        let registryEntry = toLLMRegistryEntryExternal(base64ToJson(event.payload.base64));
 
         console.log("Got registry entry", registryEntry);
 

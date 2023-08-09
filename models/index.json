@@ -38,6 +38,139 @@
         "temperature"
       ],
       "userSessionParameters": []
+    },
+    "openchat-3.2-ggml": {
+      "capabilities": {
+        "assistant": -1,
+        "coding": -1,
+        "general": -1,
+        "writing": -1
+      },
+      "config": {
+        "model_architecture": "llama"
+      },
+      "connectorType": "llmrs",
+      "description": "A generic rustformers/LLM.rs compatible model. Includes most ggml.",
+      "familyId": "llama",
+      "homepage": "https://huggingface.co/TheBloke/OpenChat_v3.2-GGML",
+      "id": "openchat-3.2-ggml",
+      "license": "Llama2",
+      "local": true,
+      "name": "OpenChat 3.2 GGML Edition",
+      "organization": "OpenChat",
+      "parameters": {
+        "post_prompt": "<|end_of_turn|>GPT4 Assistant:",
+        "pre_prompt": "<|end_of_turn|>GPT4 User:"
+      },
+      "requirements": "",
+      "sessionParameters": {},
+      "tags": [
+        "llama",
+        "conversational",
+        "assistant",
+        "local"
+      ],
+      "url": "https://huggingface.co/TheBloke/OpenChat_v3.2-GGML/resolve/main/openchat_v3.2.ggmlv3.q4_0.bin",
+      "userParameters": [
+        "top_k",
+        "top_p",
+        "repeat_penalty",
+        "temperature",
+        "bias_token",
+        "repetition_penalty_last_n",
+        "pre_prompt",
+        "post_prompt"
+      ],
+      "userSessionParameters": []
+    },
+    "Llama-13b-4-0": {
+      "capabilities": {
+        "assistant": -1,
+        "coding": -1,
+        "general": -1,
+        "writing": -1
+      },
+      "config": {
+        "model_architecture": "llama"
+      },
+      "connectorType": "llmrs",
+      "description": "GGML Version of meta’s plain llama chat model.",
+      "familyId": "llama",
+      "homepage": "https://huggingface.co/TheBloke/Llama-2-13B-chat-GGML",
+      "id": "Llama-13b-4-0",
+      "license": "Llama2",
+      "local": true,
+      "name": "LLama 13b Chat 4_0",
+      "organization": "meta",
+      "parameters": {
+        "post_prompt": "ASSISTANT:",
+        "pre_prompt": "USER: "
+      },
+      "requirements": "13B model. ",
+      "sessionParameters": {},
+      "tags": [
+        "llama",
+        "chat",
+        "conversational"
+      ],
+      "url": "https://huggingface.co/TheBloke/Llama-2-13B-chat-GGML/resolve/main/llama-2-13b-chat.ggmlv3.q4_0.bin",
+      "userParameters": [
+        "top_k",
+        "top_p",
+        "repeat_penalty",
+        "temperature",
+        "bias_token",
+        "repetition_penalty_last_n",
+        "pre_prompt",
+        "post_prompt"
+      ],
+      "userSessionParameters": []
+    },
+    "stable-beluga-7b-ggml": {
+      "backendUuid": "",
+      "capabilities": {
+        "assistant": -1,
+        "coding": -1,
+        "general": -1,
+        "writing": -1
+      },
+      "config": {
+        "model_architecture": "llama"
+      },
+      "connectorType": "llmrs",
+      "description": "Chat LLM trained by stability AI.",
+      "downloadState": 0,
+      "familyId": "llama",
+      "homepage": "https://huggingface.co/TheBloke/StableBeluga-7B-GGML",
+      "id": "stable-beluga-7b-ggml",
+      "license": "Llama2",
+      "local": true,
+      "name": "StableBeluga 7b GGML",
+      "organization": "StabilityAI",
+      "parameters": {
+        "post_prompt": " ### Assistant:",
+        "pre_prompt": "### User:"
+      },
+      "requirements": "7b model",
+      "sessionParameters": {},
+      "tags": [
+        "llama",
+        "chat",
+        "conversational",
+        "local"
+      ],
+      "url": "https://huggingface.co/TheBloke/StableBeluga-7B-GGML/resolve/main/stablebeluga-7b.ggmlv3.q4_0.bin",
+      "userParameters": [
+        "top_k",
+        "top_p",
+        "repeat_penalty",
+        "temperature",
+        "bias_token",
+        "repetition_penalty_last_n",
+        "pre_prompt",
+        "post_prompt"
+      ],
+      "userSessionParameters": []
     }
   }
 }

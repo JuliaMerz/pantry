@@ -1,63 +1,36 @@
 // src/pages/Requests.tsx
 
-import React, { useEffect, useState } from 'react';
-import { LLMRequestInfo, LLMDownloadRequestInfo, LLMUnloadRequestInfo, LLMLoadRequestInfo } from '../components/LLMRequestInfo';
-import { LLMRequestType, LLMRequest, LLMDownloadRequest, LLMLoadRequest, LLMUnloadRequest } from '../interfaces';
+import React, {useEffect, useState} from 'react';
+import {invoke} from '@tauri-apps/api/tauri';
+import {TextField, FormControlLabel, IconButton, Switch, CircularProgress, InputAdornment, Box, Typography, Stack} from '@mui/material';
+import {UserRequestInfo} from '../components/LLMRequestInfo';
+import {UserRequestType, UserRequest, toUserRequest, UserDownloadRequest, UserLoadRequest, UserUnloadRequest} from '../interfaces';
 
 function Requests() {
-  const [requestedLLMs, setRequestedLLMs] = useState<LLMRequest[]>([]);
+  const [requests, setRequests] = useState<UserRequest[]>([]);
 
   useEffect(() => {
-    // Replace with actual data fetching
-    // const fakeData: LLMRequest[] = [
-    //   {
-    //     id: '1',
-    //     name: 'LLM 1',
-    //     description: 'Description 1',
-    //     source: LLMSource.Github,
-    //     type: LLMRequestType.Download,
-    //     requester: 'Requester 1',
-    //   },
-    //   {
-    //     id: '2',
-    //     name: 'LLM 2',
-    //     description: 'Description 2',
-    //     source: LLMSource.URL,
-    //     type: LLMRequestType.Download,
-    //     requester: 'Requester 2',
-    //   },
-    //   {
-    //     id: 'gpt_4',
-    //     name: 'LLM 2',
-    //     description: 'Description 2',
-    //     type: LLMRequestType.Load,
-    //     requester: 'Requester 2',
-    //   },
-    //   // More LLMs...
-    // ];
+    const fetchRequests = async () => {
 
-    // setRequestedLLMs(fakeData);
+      const result: {data: UserRequest[]} = await invoke<{data: UserRequest[]}>('get_requests');
+      console.log("requests", result);
+      setRequests(result.data.map(toUserRequest).filter((val) => !val.complete));
+    };
+
+    fetchRequests();
   }, []);
 
   return (
-    <div>
-      <h1>Requested Large Language Models</h1>
-      {requestedLLMs.map((llm) => {
 
-        switch (llm.type) {
-          case LLMRequestType.Download:
-            return <LLMDownloadRequestInfo key={llm.id} {...llm as LLMDownloadRequest} />
-          case LLMRequestType.Unload:
-            return <LLMUnloadRequestInfo key={llm.id} {...llm as LLMUnloadRequest} />
-          case LLMRequestType.Load:
-            return <LLMLoadRequestInfo key={llm.id} {...llm as LLMLoadRequest} />
-          default:
-            return <LLMRequestInfo key={llm.id} {...llm} />
+    <Box>
+      <Typography variant="h2">Program Requests</Typography>
+      <Box>
+        {requests.map((req) => {
+          return (<UserRequestInfo key={req.id} request={req} />)
         }
+        )}</Box>
+    </Box>
 
-      }
-      )}
-    </div>
   );
 }
 

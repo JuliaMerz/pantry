@@ -239,6 +239,8 @@ fn user_permission_check(
         "request_download" => user.perm_request_download.clone(),
         "request_load" => user.perm_request_load.clone(),
         "request_unload" => user.perm_request_unload.clone(),
+        "view_llms" => user.perm_view_llms.clone(),
+        "bare_model" => user.perm_bare_model.clone(),
         &_ => false,
     };
     match auth {
@@ -439,6 +441,50 @@ async fn request_unload(
     })?;
     Ok(Json(req))
 }
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+struct RequestStatusRequest {
+    user_id: String,
+    api_key: String,
+    request_id: String,
+}
+
+#[axum_macros::debug_handler]
+async fn request_status(
+    state: State<state::GlobalStateWrapper>,
+    Json(payload): Json<RequestStatusRequest>,
+) -> Result<Json<UserRequestStatus>, (StatusCode, String)> {
+
+    let user_uuid =
+        Uuid::parse_str(&payload.user_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    let request_uuid =
+        Uuid::parse_str(&payload.request_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    let user = user_permission_check(
+        "",
+        payload.api_key.clone(),
+        user_uuid,
+        state.pool.clone(),
+    )?;
+
+    let req = database::get_request(request_uuid, state.pool.clone()).map_err(|err| {
+        println!("didn't find {:?}", request_uuid);
+        (
+            StatusCode::NOT_FOUND,
+            "Request Not Found".into(),
+        )
+    })?;
+    if user_uuid != req.user_id.0 {
+        println!("uuid didn't match find {:?} vs {:?}", user_uuid, req.user_id.0);
+        return Err( (
+            StatusCode::NOT_FOUND,
+            "Request Not Found".into(),
+        ))
+    }
+
+    Ok(Json((&req).into()))
+}
+
+
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 struct RequestLoadFlexRequest {
@@ -725,7 +771,7 @@ async fn interrupt_session(
     let session_id = Uuid::parse_str(&payload.session_id)
         .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     let user = user_permission_check(
-        "prompt_session",
+        "session",
         payload.api_key,
         user_uuid,
         state.pool.clone(),
@@ -750,7 +796,8 @@ async fn llm_loading_assistant(
 ) -> Result<Json<LLMRunningStatus>, (StatusCode, String)> {
     println!("Called llm_loading_assistant from API.");
     if state.activated_llms.contains_key(&new_llm.uuid) {
-        return Err((StatusCode::OK, "LLM Already Activated".into()));
+        return Ok(Json(state.activated_llms.get(&new_llm.uuid).unwrap().value().into()))
+        // return Err((StatusCode::OK, "LLM Already Activated".into()));
     }
 
     let manager_addr_copy = state.manager_addr.clone();
@@ -835,7 +882,7 @@ async fn load_llm_flex(
     println!("Called load_llm_flex from API.");
     let user_uuid =
         Uuid::parse_str(&payload.user_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
-    let user = user_permission_check("session", payload.api_key, user_uuid, state.pool.clone())?;
+    let user = user_permission_check("load_llm", payload.api_key, user_uuid, state.pool.clone())?;
     // We should use currently running LLMs.
     let mut llms = database::get_available_llms(state.pool.clone())
         .map_err(|err| {
@@ -1456,6 +1503,190 @@ async fn prompt_session_stream(
             ),
         ))
     }
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+struct BareModelFlexRequest {
+    user_id: String,
+    api_key: String,
+    filter: Option<LLMFilter>,
+    preference: Option<LLMPreference>,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct BareModelResponse {
+    model: LLMStatus,
+    path: String,
+
+}
+async fn bare_model_flex(
+    state: State<state::GlobalStateWrapper>,
+    Json(payload): Json<BareModelFlexRequest>,
+) -> Result<Json<BareModelResponse>, (StatusCode, String)> {
+    println!("Called bare_mode_flex from API.");
+    let user_uuid =
+        Uuid::parse_str(&payload.user_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    let user = user_permission_check("bare_model", payload.api_key, user_uuid, state.pool.clone())?;
+    let mut llms = database::get_available_llms(state.pool.clone())
+        .map_err(|err| {
+            println!("Failed to database: {:?}", err.to_string());
+            (StatusCode::INTERNAL_SERVER_ERROR, "Database Error".into())})?;
+
+    llms = llms.into_iter().filter(|llm| llm.model_path.is_some()).collect();
+    // let mut llms: Vec<Uuid> = state
+    //     .activated_llms
+    //     .iter()
+    //     .map(|pair| (pair.key()).clone())
+    //     .collect();
+
+    // let llms = llms.into_iter().filter(|llm| )
+
+    if let Some(filter) = payload.filter {
+        if let Some(llm_uuid_filter) = filter.llm_uuid {
+            llms = llms
+                .into_iter()
+                .filter(|llm| llm.uuid.0 == llm_uuid_filter)
+                .collect();
+        }
+        if let Some(llm_id_filter) = filter.llm_id {
+            llms = llms
+                .into_iter()
+                .filter(|llm| llm.id == llm_id_filter)
+                .collect();
+        }
+        if let Some(family_id_filter) = filter.family_id {
+            llms = llms
+                .into_iter()
+                .filter(|llm| llm.family_id == family_id_filter)
+                .collect();
+        }
+
+        if let Some(local_filter) = filter.local {
+            llms = llms
+                .into_iter()
+                .filter(|llm| llm.local == local_filter)
+                .collect();
+        }
+
+        if let Some(capabilities_filter) = filter.minimum_capabilities {
+            for cap_fil in capabilities_filter.into_iter() {
+                let capability_name = cap_fil.capability;
+                let capability_min = cap_fil.value;
+                llms = llms
+                    .into_iter()
+                    .filter(|llm| {
+                        llm.capabilities
+                            .0
+                            .get(&capability_name.to_string())
+                            .is_some_and(|x| x.clone() >= capability_min.into())
+                    })
+                    .collect()
+            }
+        }
+    }
+
+    println!("Filtered LLMS: {:?}", llms);
+
+    if llms.is_empty() {
+        return Err((
+            StatusCode::NOT_FOUND,
+            "No running LLM matching requirements.".into(),
+        ));
+    } else if llms.len() == 1 {
+        let llm = llms.pop().unwrap();
+        let resp = BareModelResponse {
+            model: (&llm).into(),
+            path: llm.model_path.0.clone().unwrap().into_os_string().into_string().map_err(|osstr|
+                (StatusCode::INTERNAL_SERVER_ERROR, "Path Error".into())
+            )?
+        };
+        return Ok(Json(resp));
+    }
+
+    let mut capability_pref = CapabilityType::General;
+    if let Some(preference) = payload.preference {
+        // uuid is a singular preference. if we find it, we go.
+        if let Some(uuid_pref) = preference.llm_uuid {
+            if let Some(found) = llms.iter().find(|llm| llm.uuid.0 == uuid_pref) {
+        let llm = llms.pop().unwrap();
+        let resp = BareModelResponse {
+            model: (&llm).into(),
+            path: llm.model_path.0.unwrap().into_os_string().into_string().map_err(|osstr|
+                (StatusCode::INTERNAL_SERVER_ERROR, "Path Error".into())
+            )?
+        };
+        return Ok(Json(resp));
+            }
+        }
+
+        // id is a singular preference. if we find it, we go.
+        if let Some(id_pref) = preference.llm_id {
+            if let Some(found) = llms.iter().find(|llm| llm.id == id_pref) {
+        let llm = llms.pop().unwrap();
+        let resp = BareModelResponse {
+            model: (&llm).into(),
+            path: llm.model_path.0.clone().unwrap().into_os_string().into_string().map_err(|osstr|
+                (StatusCode::INTERNAL_SERVER_ERROR, "Path Error".into())
+            )?
+        };
+        return Ok(Json(resp));
+            }
+        }
+
+        if let Some(local_pref) = preference.local {
+            let count = llms.iter().filter(|llm| llm.local == local_pref).count();
+            if count > 0 {
+                llms = llms
+                    .into_iter()
+                    .filter(|llm| llm.local == local_pref)
+                    .collect();
+            }
+        }
+
+        if let Some(family_pref) = preference.family_id {
+            let count = llms
+                .iter()
+                .filter(|llm| llm.family_id == family_pref)
+                .count();
+            if count > 0 {
+                llms = llms
+                    .into_iter()
+                    .filter(|llm| llm.family_id == family_pref)
+                    .collect();
+            }
+        }
+
+        if let Some(cap_pref) = preference.capability_type {
+            capability_pref = cap_pref;
+        }
+    }
+    llms.sort_by(|a, b| {
+        a.capabilities
+            .get(&capability_pref.to_string())
+            .unwrap_or(&-1)
+            .cmp(
+                b.capabilities
+                    .get(&capability_pref.to_string())
+                    .unwrap_or(&-1),
+            )
+    });
+
+    if llms.is_empty() {
+        println!("Major malfunction, LLMs empty should be impossible here.");
+        //fail gracefully
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failure in sorting code, please contact support".into(),
+        ));
+    }
+        let llm = llms.pop().unwrap();
+        let resp = BareModelResponse {
+            model: (&llm).into(),
+            path: llm.model_path.0.clone().unwrap().into_os_string().into_string().map_err(|osstr|
+                (StatusCode::INTERNAL_SERVER_ERROR, "Path Error".into())
+            )?
+        };
+        return Ok(Json(resp));
 
     // let user = state
     //     .registered_users
@@ -1463,6 +1694,38 @@ async fn prompt_session_stream(
     //     .ok_or((StatusCode::UNAUTHORIZED, "Invalid User".into()))?;
     // user_permission_check("", api_key, &user.value())?;
 }
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+struct BareModelRequest {
+    user_id: String,
+    api_key: String,
+    llm_id: String,
+}
+#[axum_macros::debug_handler]
+async fn bare_model(
+    state: State<state::GlobalStateWrapper>,
+    Json(payload): Json<BareModelRequest>,
+) -> Result<Json<BareModelResponse>, (StatusCode, String)> {
+    println!("Called load_llm from API.");
+    let user_uuid =
+        Uuid::parse_str(&payload.user_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+
+    let llm_uuid =
+        Uuid::parse_str(&payload.llm_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    let _user = user_permission_check("bare_model", payload.api_key, user_uuid, state.pool.clone())?;
+
+    let llm = database::get_llm(llm_uuid, state.pool.clone()).map_err(|err|
+            (StatusCode::NOT_FOUND, "Unable to find LLM".into())
+    )?;
+    let resp = BareModelResponse {
+        model: (&llm).into(),
+            path: llm.model_path.0.clone().unwrap().into_os_string().into_string().map_err(|osstr|
+                (StatusCode::INTERNAL_SERVER_ERROR, "Path Error".into())
+            )?
+    };
+    return Ok(Json(resp))
+}
+
 
 pub async fn build_server(
     global_state: state::GlobalStateWrapper,
@@ -1477,6 +1740,7 @@ pub async fn build_server(
             .route("/request_load", post(request_load))
             .route("/request_unload", post(request_unload))
             .route("/request_load_flex", post(request_load_flex))
+            .route("/get_request_status", post(request_status))
             .route("/get_llm_status", post(get_llm_status))
             .route("/get_available_llms", post(get_available_llms))
             .route("/get_running_llms", post(get_running_llms))
@@ -1490,6 +1754,8 @@ pub async fn build_server(
             .route("/create_session_id", post(create_session_id))
             .route("/create_session_flex", post(create_session_flex))
             .route("/prompt_session_stream", post(prompt_session_stream))
+            .route("/bare_model", post(bare_model))
+            .route("/bare_model_flex", post(bare_model_flex))
             .with_state(state)
     }
     let app = routes(global_state);

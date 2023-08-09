@@ -36,15 +36,17 @@ Give developers an easy way to integrate LLMs in a model agnostic way.
 # Long Term
 Push forward edge-LLMs by providing the tools to better test, measure, and compare them.
 
+# Todos
+Better instrumentation from the UI for when external programs are running things.
+Better documentation.
+Add system prompt implementation to llmrs.
+
 # Backlog
+- **OpenAI/Other Remote LLM Integration** — The entire architecure is designed to allow this,
+and we're not currently taking advantage of it.
 - **Headless/Terminal Mode** — Use terminal commands instead of the frontend.
-- **Non-Text LLMs** —
-
-
-
-
-
-
+- **Non-Text Models** —
+- **Better parallelism** — (currently only one program/ui can use each LLM at a time).
 
 # How You Can Help
 ## Add Models

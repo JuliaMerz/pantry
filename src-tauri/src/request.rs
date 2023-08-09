@@ -40,6 +40,7 @@ pub struct UnloadRequest {
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, FromSqlRow, AsExpression)]
 #[diesel(sql_type = diesel::sql_types::Text)]
+#[serde(tag = "type")]
 pub enum UserRequestType {
     DownloadRequest(DownloadRequest),
     PermissionRequest(PermissionRequest),

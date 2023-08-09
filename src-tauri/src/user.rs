@@ -25,6 +25,7 @@ pub struct Permissions {
     pub perm_request_load: bool,
     pub perm_request_unload: bool,
     pub perm_view_llms: bool,
+    pub perm_bare_model: bool,
 }
 
 impl From<&User> for Permissions {
@@ -39,6 +40,7 @@ impl From<&User> for Permissions {
             perm_request_load: user.perm_request_load.clone(),
             perm_request_unload: user.perm_request_unload.clone(),
             perm_view_llms: user.perm_view_llms.clone(),
+            perm_bare_model: user.perm_bare_model.clone(),
         }
     }
 }
@@ -61,6 +63,7 @@ pub struct User {
     pub perm_request_load: bool,
     pub perm_request_unload: bool,
     pub perm_view_llms: bool,
+    pub perm_bare_model: bool,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -78,6 +81,7 @@ pub struct UserInfo {
     pub perm_request_load: bool,
     pub perm_request_unload: bool,
     pub perm_view_llms: bool,
+    pub perm_bare_model: bool,
 }
 
 impl From<&User> for UserInfo {
@@ -96,6 +100,7 @@ impl From<&User> for UserInfo {
             perm_request_load: user.perm_request_load.clone(),
             perm_request_unload: user.perm_request_unload.clone(),
             perm_view_llms: user.perm_view_llms.clone(),
+            perm_bare_model: user.perm_bare_model.clone(),
         }
     }
 }
@@ -106,7 +111,7 @@ impl User {
             id: DbUuid(Uuid::new_v4()),
             name: name,
             api_key: generate_api_key(),
-            perm_superuser: true,
+            perm_superuser: false,
             perm_load_llm: false,
             perm_unload_llm: false,
             perm_download_llm: false,
@@ -115,6 +120,7 @@ impl User {
             perm_request_load: false,
             perm_request_unload: false,
             perm_view_llms: false,
+            perm_bare_model: false,
         }
     }
 }
@@ -165,5 +171,6 @@ pub fn get_local_user() -> User {
         perm_request_load: false,
         perm_request_unload: false,
         perm_view_llms: false,
+        perm_bare_model: false,
     }
 }

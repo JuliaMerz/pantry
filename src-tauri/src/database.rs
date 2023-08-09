@@ -13,6 +13,7 @@ use std::fmt;
 use uuid::Uuid;
 
 use crate::database_types::*;
+use crate::user;
 use crate::llm::{LLMHistoryItem, LLMSession, LLM};
 use crate::request::UserRequest;
 use crate::schema;
@@ -83,6 +84,16 @@ pub fn get_llm_history(
         .filter(id.eq(DbUuid(llm_history_id)))
         .select(LLMHistoryItem::as_select())
         .first(conn)
+}
+
+pub fn get_requests(
+    pool: Pool<ConnectionManager<SqliteConnection>>,
+) -> Result<Vec<UserRequest>, diesel::result::Error> {
+    let conn = &mut pool.get().unwrap();
+    use schema::requests::dsl::*;
+    requests
+        .select(UserRequest::as_select())
+        .load(conn)
 }
 
 pub fn get_request(
@@ -274,11 +285,58 @@ pub fn delete_llm(
 ) -> Result<usize, diesel::result::Error> {
     let conn = &mut pool.get().unwrap();
     use schema::llm::dsl::*;
-    let conn = &mut pool.get().unwrap();
     diesel::delete(llm)
         .filter(uuid.eq(DbUuid(llm_id)))
         .execute(conn)
 }
+
+pub fn get_llm_by_url(
+    reg_url: String,
+    pool: Pool<ConnectionManager<SqliteConnection>>,
+) -> Result<LLM, diesel::result::Error> {
+    let conn = &mut pool.get().unwrap();
+    use schema::llm::dsl::*;
+    llm.filter(url.eq(reg_url))
+        .select(LLM::as_select())
+        .first(conn)
+}
+
+pub fn mark_request_complete(
+    req_id: Uuid,
+    accepted: bool,
+    pool: Pool<ConnectionManager<SqliteConnection>>,
+) -> Result<usize, diesel::result::Error> {
+    let conn = &mut pool.get().unwrap();
+    use schema::requests::dsl;
+    diesel::update(dsl::requests)
+        .filter(dsl::id.eq(DbUuid(req_id)))
+        .set((dsl::accepted.eq(accepted),
+        dsl::complete.eq(true)))
+        .execute(conn)
+}
+
+pub fn update_permissions(
+    user_id: Uuid,
+    perms: user::Permissions,
+    pool: Pool<ConnectionManager<SqliteConnection>>,
+) -> Result<usize, diesel::result::Error> {
+    let conn = &mut pool.get().unwrap();
+    use schema::user::dsl::*;
+    diesel::update(user)
+        .filter(id.eq(DbUuid(user_id)))
+        .set((perm_superuser.eq(perms.perm_superuser),
+        perm_load_llm.eq(perms.perm_load_llm),
+        perm_unload_llm.eq(perms.perm_unload_llm),
+        perm_download_llm.eq(perms.perm_download_llm),
+        perm_session.eq(perms.perm_session),
+        perm_request_download.eq(perms.perm_request_download),
+        perm_request_load.eq(perms.perm_request_load),
+        perm_request_unload.eq(perms.perm_request_unload),
+        perm_view_llms.eq(perms.perm_view_llms)))
+        .execute(conn)
+}
+
+
 
 // MAGIC SAUCE
 //

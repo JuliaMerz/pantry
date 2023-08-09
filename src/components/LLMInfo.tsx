@@ -1,6 +1,7 @@
 // src/components/LLMInfo.tsx
 import {forwardRef, useState, useMemo, useContext, useEffect} from "react";
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import { Buffer } from 'buffer';
 import React from 'react';
 import ReactJsonView from 'react-json-view';
 import {ReactElement} from 'react';
@@ -36,6 +37,17 @@ import {invoke} from '@tauri-apps/api/tauri';
 import {ColorContext} from "../theme";
 
 
+function jsonToBase64(object: any) {
+  const json = JSON.stringify(object);
+  return Buffer.from(json).toString("base64");
+}
+
+function base64ToJson(base64String: string) {
+  const json = Buffer.from(base64String, "base64").toString();
+  return JSON.parse(json);
+}
+
+
 type LLMInfoProps = {
   llm: LLM | LLMRegistryEntry,
   rightButton: ReactElement<any> | null;
@@ -55,7 +67,7 @@ const LLMInfo: React.FC<LLMInfoProps> = ({
   const colorMode = useContext(ColorContext);
 
   const shareToClipboard = async () => {
-    await writeText(`pantry://download/${btoa(JSON.stringify(jsonEdition))}`);
+    await writeText(`pantry://download/${jsonToBase64(jsonEdition)}`);
     setSuccess(true)
     setTimeout(() => setSuccess(false), 200);
   }
@@ -180,7 +192,7 @@ const LLMInfo: React.FC<LLMInfoProps> = ({
                   overflow: 'hidden',
 
                 }}
-                  onClick={shareToClipboard}>{`pantry://download/${btoa(JSON.stringify(jsonEdition))}`}</Typography></Box>
+                  onClick={shareToClipboard}>{`pantry://download/${jsonToBase64(jsonEdition)}`}</Typography></Box>
               <Typography variant="subtitle1">JSON View:</Typography>
               <ReactJsonView src={jsonEdition} theme={colorMode.color === 'light' ? 'apathy:inverted' : 'apathy'} />
             </CardContent>

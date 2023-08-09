@@ -1,6 +1,6 @@
 // src/pages/DownloadableLLMs.tsx
 
-import React, {useEffect, useState} from 'react';
+import React, {useEffect, useState, useMemo, useCallback} from 'react';
 import {
   Box,
   InputAdornment,
@@ -30,7 +30,7 @@ import {Store} from "tauri-plugin-store-api";
 import {fetch} from '@tauri-apps/api/http';
 import {listen} from '@tauri-apps/api/event'
 import {invoke} from '@tauri-apps/api/tauri';
-import {validateRegistryEntry, addRegistry, getRegistries, addRegistryEntry, downloadLLM} from '../registryHelpers';
+import {validateRegistryEntry, addRegistry, getRegistries, addRegistryEntry, downloadLLM, regSetDownloaded} from '../registryHelpers';
 
 import {LLMRegistryRegistry, LLMRegistry, LLMRegistryEntry, toLLMRegistryEntry, LLMDownloadState, LLMRegistryEntryConnector, LLMAvailable, toLLMAvailable, produceEmptyRegistryEntry} from '../interfaces';
 import LLMDownloadableInfo from '../components/LLMDownloadableInfo';
@@ -121,16 +121,16 @@ function DownloadableLLMs() {
 
 
 
-  const validateNewRegistryEntry = (): boolean => {
+  const validateNewRegistryEntry = useCallback((): boolean => {
     return Object.keys(newRegistryEntryErrors).length == 0
-  }
+  }, [newRegistryEntryErrors]);
 
-  const handleAddRegistry = async () => {
+  const handleAddRegistry = useCallback(async () => {
     addRegistry(newRegistry.id, newRegistry.url).then((registries: LLMRegistryRegistry) => {
       setRegistries(registries);
       setNewRegistry({id: '', url: ''});
     });
-  }
+  }, [newRegistry]);
 
   const handleAddRegistryEntry = async () => {
     if (validateNewRegistryEntry()) {
@@ -148,7 +148,7 @@ function DownloadableLLMs() {
     }
   };
 
-  const refreshData = async (forceRefresh: boolean) => {
+  const refreshData = useCallback(async (forceRefresh: boolean) => {
 
     const downloadableLLMs: [LLMRegistryEntry, LLMRegistry][] = [];
 
@@ -157,6 +157,9 @@ function DownloadableLLMs() {
       const llmAvail = result.data.map(toLLMAvailable);
       setAvailableLLMs(llmAvail);
 
+      console.log("result", result);
+      console.log("llmavail", llmAvail);
+      let allRemovedModels: LLMRegistryEntry[] = []
       for (let regKey of Object.keys(regs)) {
         console.log("reg key {}, regs  models {}", regKey, regs[regKey], llmAvail)
         // Filter out already downloaded models based on id and backendUuid
@@ -171,28 +174,34 @@ function DownloadableLLMs() {
           // If we have them in llm_available then their download is actually complete already!
           value.downloadState = LLMDownloadState.Downloaded
         })
+        allRemovedModels = allRemovedModels.concat(removedModels);
+
 
         downloadableLLMs.push(...(filteredModels.map((reg_entry): [LLMRegistryEntry, LLMRegistry] => [reg_entry, regs[regKey]])));
       }
+      regSetDownloaded(allRemovedModels);
       setRegistries(regs);
 
       // downloadableLLMs.push(...(regs[regKey].models.map((reg_entry): [LLMRegistryEntry, LLMRegistry] => [reg_entry, regs[regKey]])));
       setDownloadableLLMs(downloadableLLMs);
     });
 
-  }
+  }, []);
 
 
-  const capitalizeFirstLetter = (string: string) => string.charAt(0).toUpperCase() + string.slice(1);
+  const capitalizeFirstLetter = useCallback((string: string) => string.charAt(0).toUpperCase() + string.slice(1), []);
 
-  const handleCheckboxInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCheckboxInputChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const {name} = event.target;
-    setNewRegistryEntry({
-      ...newRegistryEntry,
-      [name]: !newRegistryEntry[name as keyof LLMRegistryEntry]
-    })
-    //We skip error checking because it's a _checkbox_
-  }
+    setNewRegistryEntry((newRegistryEntry) => {
+      return {
+        ...newRegistryEntry,
+        [name]: !newRegistryEntry[name as keyof LLMRegistryEntry]
+      }
+    }
+    )
+  }, []);
+  //We skip error checking because it's a _checkbox_
 
 
   const handleRegistryInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -216,6 +225,22 @@ function DownloadableLLMs() {
     }
   };
 
+
+  const handleUserParamChange = (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const {name, value} = event.target;
+
+    // Updating the newRegistryEntry state
+    setNewRegistryEntry({
+      ...newRegistryEntry,
+      [name]: value.split(',').map((s: string) => s.trim()),
+    });
+
+    // Use imported error function from here on
+    setNewRegistryErrors(validateRegistryEntry({
+      ...newRegistryEntry,
+      [name]: value.split(',').map((s: string) => s.trim()),
+    }));
+  };
 
   const handleRegistryEntryInputChange = (event: SelectChangeEvent | React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const {name, value} = event.target;
@@ -263,7 +288,7 @@ function DownloadableLLMs() {
     setDynamicKeyValuePairs(newPairs);
 
     const newEntry = {...newRegistryEntry};
-    newEntry[fieldType] = Object.fromEntries(newPairs[fieldType].filter(([key, value]) => key !== '' || value !== '').map(([key, value]) => [key, parseFloat(value)])) as {assistant: number, coding: number, writer: number};
+    newEntry[fieldType] = Object.fromEntries(newPairs[fieldType].filter(([key, value]) => key !== '' || value !== '').map(([key, value]) => [key, parseFloat(value)])) as {assistant: number, coding: number, general: number, writing: number};
     console.log("newEntry", newEntry, newEntry[fieldType]);
     setNewRegistryEntry(newEntry);
   };
@@ -287,12 +312,12 @@ function DownloadableLLMs() {
 
 
 
-  const beginDownload = async (llm: LLMRegistryEntry, regUrl: string) => {
+  const beginDownload = useCallback(async (llm: LLMRegistryEntry, regUrl: string) => {
     // We should be able to do this with just saving then refresh_data
     await downloadLLM(llm, regUrl);
 
     refreshData(false);
-  }
+  }, []);
 
 
   // const beginDownload = (llmId: string, regUrl: string, index: number, uuid: string) => {
@@ -325,11 +350,11 @@ function DownloadableLLMs() {
   //   });
 
 
-  const completeDownload = (llmId: string, regUrl: string) => {
+  const completeDownload = useCallback((llmId: string, regUrl: string) => {
     refreshData(false);
-  };
+  }, []);
 
-  const renderSpecialFields = () => {
+  const renderSpecialFields = useMemo(() => {
     if (newRegistryEntry.connectorType == LLMRegistryEntryConnector.LLMrs) {
       return (
         <Box sx={{
@@ -362,7 +387,7 @@ function DownloadableLLMs() {
           </Select></Box>
       )
     }
-  }
+  }, [modelArchitecture, newRegistryEntry.connectorType]);
 
   const applySpecialFields = (llmRegEntry: LLMRegistryEntry) => {
     if (newRegistryEntry.connectorType == LLMRegistryEntryConnector.LLMrs) {
@@ -475,12 +500,13 @@ function DownloadableLLMs() {
                 <MenuItem value="openai">OpenAI</MenuItem>
               </Select>
             } label={capitalizeFirstLetter(key)} />
-            {renderSpecialFields()}
+            {renderSpecialFields}
             <Divider role="presentation">If you intend to share publicly, please also fill in...</Divider>
           </Box>
         );
         break;
 
+      case "tags":
       case "userParameters":
       case "userSessionParameters":
         return (
@@ -492,7 +518,7 @@ function DownloadableLLMs() {
               name={key}
               label={capitalizeFirstLetter(key)}
               value={newRegistryEntry[key as keyof LLMRegistryEntry]}
-              onChange={handleRegistryEntryInputChange}
+              onChange={handleUserParamChange}
             />
           </Box>);
         break;
@@ -540,7 +566,7 @@ function DownloadableLLMs() {
 
   return (
     <Box>
-      <Typography variant="h3">Downloadable Large Language Models</Typography>
+      <Typography variant="h2">Downloadable Large Language Models</Typography>
 
       <Box sx={{my: 2}}>
         <Button variant="contained" color="primary" onClick={() => setRegistryEntryModalOpen(true)}>
@@ -569,7 +595,6 @@ function DownloadableLLMs() {
       </Box>
 
       {downloadableLLMs.filter((pair, index) => {
-        console.log(llmFilter);
         return pair[0].id.includes(llmFilter) || pair[0].name.includes(llmFilter) || pair[0].familyId.includes(llmFilter) || pair[0].license.includes(llmFilter) || pair[0].organization.includes(llmFilter);
 
       }).map((pair, index) => (

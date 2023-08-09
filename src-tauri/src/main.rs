@@ -17,6 +17,7 @@ use tokio::sync::oneshot;
 use url::{ParseError, Url};
 use uuid::Uuid;
 
+use std::fs;
 use std::collections::HashMap;
 use std::env;
 use std::error::Error;
@@ -74,7 +75,7 @@ fn run_migrations(
     // See the documentation for `MigrationHarness` for
     // all available methods.
     println!("Mirations:\n{:?}", connection.revert_all_migrations(MIGRATIONS));
-    println!("Mirations:\n{:?}", connection.applied_migrations());
+    // println!("Mirations:\n{:?}", connection.applied_migrations());
     connection.run_pending_migrations(MIGRATIONS)?;
 
     Ok(())
@@ -127,6 +128,12 @@ async fn main() {
     let context = tauri::generate_context!();
 
     let mut db_path = tauri::api::path::app_local_data_dir(context.config()).unwrap();
+    let llm_path = tauri::api::path::local_data_dir().unwrap();
+
+    if !llm_path.exists() {
+        fs::create_dir_all(&llm_path).unwrap();
+    }
+
 
     let config = context.config().clone();
 
@@ -213,6 +220,7 @@ async fn main() {
             DashMap::new(),
             app.handle(),
             tauri::api::path::app_local_data_dir(&config).unwrap(),
+            llm_path,
             pool,
         );
 
@@ -325,6 +333,8 @@ async fn main() {
             frontend::set_user_setting,
             frontend::get_user_settings,
             frontend::interrupt_session,
+            frontend::accept_request,
+            frontend::reject_request,
         ]);
 
     // build_server()

@@ -106,11 +106,12 @@ export async function getRegistries(forceRemoteRefresh: boolean): Promise<LLMReg
 export const validateRegistryEntry = (entry: LLMRegistryEntry) => {
   let errors: {[key: string]: string} = {};
 
+  console.log("beep", entry);
   if (entry.name.trim() === '') {
     errors.name = 'Name is required.';
   }
 
-  if (entry.connectorType == LLMRegistryEntryConnector.Ggml) {
+  if (entry.connectorType == LLMRegistryEntryConnector.LLMrs) {
     if (entry.url.trim() === '') {
       errors.url = 'URL is required for ggml models.';
     }
@@ -223,4 +224,24 @@ export async function deleteRegistryEntry(llm: LLMRegistryEntry, registry: LLMRe
   await store.set(REGISTRIES_STORAGE_KEY, regs);
   await store.save();
   return deleted;
+}
+
+export async function regSetDownloaded(llms: LLMRegistryEntry[]) {
+  console.log("Running!");
+  let ids = llms.map((llm) => llm.backendUuid);
+  let regs = await getRegistries(false);
+
+  for (const [url, reg] of Object.entries(regs)) {
+    for (const [key, ent] of Object.entries(reg.models)) {
+      console.log("trying", ids, ent)
+      if (ids.includes(ent.backendUuid)) {
+        ent.downloadState = LLMDownloadState.Downloaded;
+        console.log("updating!");
+      }
+    }
+  }
+
+  console.log("final regs", regs);
+  await store.set(REGISTRIES_STORAGE_KEY, regs);
+  await store.save();
 }

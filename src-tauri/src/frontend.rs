@@ -1,6 +1,7 @@
 use crate::connectors;
 use crate::connectors::llm_manager;
 use crate::database;
+use crate::request;
 use crate::emitter;
 use crate::llm;
 use crate::llm::LLMWrapper;
@@ -80,9 +81,14 @@ pub struct LLMAvailableInfo {
 
 #[derive(serde::Serialize)]
 pub struct LLMRequestInfo {
-    pub llm_info: LLMInfo,
-    pub source: String, //For compatibility with the string based enum in typescript
-    pub requester: String,
+    pub id: String,
+    pub user_id: String,
+    pub reason: String,
+    pub timestamp: DateTime<Utc>,
+    pub originator: String,
+    pub request: request::UserRequestType,
+    pub complete: bool,
+    pub accepted: bool,
 }
 
 // so far, we allow three conversions:
@@ -150,54 +156,124 @@ impl From<&llm::LLM> for LLMAvailableInfo {
     }
 }
 
+impl From<&request::UserRequest> for LLMRequestInfo {
+    fn from(value: &request::UserRequest) -> Self {
+        LLMRequestInfo {
+            id: value.id.0.clone().to_string(),
+            user_id: value.user_id.0.clone().to_string(),
+            reason: value.reason.clone(),
+            timestamp: value.timestamp.clone(),
+            originator: value.originator.clone(),
+            request: value.request.clone(),
+            complete: value.complete.clone(),
+            accepted: value.accepted.clone(),
+        }
+    }
+}
+
+
 #[tauri::command]
 pub async fn get_requests(
     state: tauri::State<'_, state::GlobalStateWrapper>,
 ) -> Result<CommandResponse<Vec<LLMRequestInfo>>, String> {
     // let requests = state.get_requests().await;
     println!("received command get_reqs");
-
-    let mock_llm = LLMInfo {
-        id: "llm_id".into(),
-        family_id: "family_id".into(),
-        organization: "openai".into(),
-        name: "llmname".into(),
-        description: "I'm a little llm, short and stout!".into(),
-        parameters: HashMap::from([("color".into(), "green".into())]),
-        user_parameters: vec!["shape".into()],
-        session_parameters: HashMap::from([("session".into(), "red".into())]),
-        user_session_parameters: vec!["session".into()],
-        connector_type: connectors::LLMConnectorType::GenericAPI.to_string(),
-        capabilities: HashMap::from([("TEXT_COMPLETION".into(), 10), ("CONVERSATION".into(), 10)]),
-        config: HashMap::from([]),
-        url: "".into(),
-        homepage: "https://platform.openai.com/docs/introduction".into(),
-        license: "commercial".into(),
-        tags: vec!["test".into(), "request".into()],
-        local: false,
-        requirements: "openai api key".into(),
-    };
-    let mock = LLMRequestInfo {
-        llm_info: mock_llm,
-        source: "mock".into(),
-        requester: "fake".into(),
-    };
-    Ok(CommandResponse { data: vec![mock] })
+    let reqs = database::get_requests(state.pool.clone())
+        .map_err(|err| format!("Database failure: {:?}", err))?;
+    // let mut available_llms: Vec<LLMAvailable> = Vec::new();
+    // for val in available_llms_iter {
+    //     available_llms.push(val.value().clone().as_ref().into())
+    // }
+    Ok(CommandResponse {
+        data: reqs.iter().map(|req| req.into()).collect(),
+    })
     // Err("boop".into())
 }
 
 #[tauri::command]
 pub async fn accept_request(
+    request_id: String,
     state: tauri::State<'_, state::GlobalStateWrapper>,
-) -> Result<CommandResponse<Vec<LLMRequestInfo>>, String> {
-    todo!()
+    app: tauri::AppHandle,
+) -> Result<CommandResponse<()>, String> {
+
+    let req_uuid = Uuid::parse_str(&request_id).map_err(|e| e.to_string())?;
+
+    let req = database::get_request(req_uuid, state.pool.clone())
+        .map_err(|err| format!("Request not found: {:?}", err))?;
+
+    match req.request {
+        request::UserRequestType::DownloadRequest(dlr) => {
+            let uuid = Uuid::new_v4();
+            let llm_reg = dlr.llm_registry_entry;
+
+            let id = llm_reg.id.clone();
+
+            tokio::spawn(async move {
+                registry::download_and_write_llm(llm_reg, uuid, app.clone()).await;
+            });
+
+            database::mark_request_complete(req_uuid, true, state.pool.clone())
+        .map_err(|err| format!("Databse failure: {:?}", err))?;
+
+            Ok(CommandResponse {
+                data: ()
+            })
+        },
+        request::UserRequestType::PermissionRequest(pr) => {
+            database::update_permissions(
+                req.user_id.0,
+                pr.requested_permissions,
+                state.pool.clone(),
+            )
+        .map_err(|err| format!("Databse failure: {:?}", err))?;
+
+            database::mark_request_complete(req_uuid, true, state.pool.clone())
+        .map_err(|err| format!("Databse failure: {:?}", err))?;
+
+            Ok(CommandResponse {
+                data: ()
+            })
+        },
+        request::UserRequestType::LoadRequest(lr) => {
+            load_llm(
+                lr.llm_id,
+                app,
+                state.clone()).await?;
+            database::mark_request_complete(req_uuid, true, state.pool.clone())
+        .map_err(|err| format!("Databse failure: {:?}", err))?;
+            Ok(CommandResponse {
+                data: ()
+            })
+
+
+        },
+        request::UserRequestType::UnloadRequest(ur) => {
+            unload_llm(
+                ur.llm_id,
+                app,
+                state.clone()).await?;
+            database::mark_request_complete(req_uuid, true, state.pool.clone())
+        .map_err(|err| format!("Databse failure: {:?}", err))?;
+            Ok(CommandResponse {
+                data: ()
+            })
+        }
+    }
 }
 
 #[tauri::command]
 pub async fn reject_request(
+    request_id: String,
     state: tauri::State<'_, state::GlobalStateWrapper>,
-) -> Result<CommandResponse<Vec<LLMRequestInfo>>, String> {
-    todo!()
+) -> Result<CommandResponse<()>, String> {
+    let req_uuid = Uuid::parse_str(&request_id).map_err(|e| e.to_string())?;
+    database::mark_request_complete(req_uuid, false, state.pool.clone())
+        .map_err(|err| format!("Databse failure: {:?}", err))?;
+
+            Ok(CommandResponse {
+                data: ()
+            })
 }
 
 #[tauri::command]
@@ -251,9 +327,7 @@ pub fn download_llm(
     tokio::spawn(async move {
         registry::download_and_write_llm(llm_reg, uuid, app.clone()).await;
     });
-    // Here we need to download llm_reg.url
 
-    //Honestly idk wtf this code is even doing. It's definitely not downloading an LLM.
     Ok(CommandResponse {
         data: DownloadResponse {
             uuid: uuid.to_string(),
@@ -284,6 +358,12 @@ pub fn set_user_setting(
         }
         "n_thread" => {
             user_settings.n_thread = value.as_u64().ok_or("Invalid value for 'n_thread'")? as usize
+        }
+        "preferred_active_sessions" => {
+            user_settings.preferred_active_sessions = value.as_u64().ok_or("Invalid value for 'preferred_active_sessions'")? as usize
+        }
+        "dedup_downloads" => {
+            user_settings.dedup_downloads = value.as_bool().ok_or("Invalid value for 'dedup_downloads'")?
         }
         "n_batch" => {
             user_settings.n_batch = value.as_u64().ok_or("Invalid value for 'n_batch'")? as usize

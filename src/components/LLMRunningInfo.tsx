@@ -11,13 +11,14 @@ import {
   TableRow, TextField, Typography
 } from '@mui/material';
 
-import React, {useEffect, useState} from 'react';
+import React, {useEffect, useState, useContext} from 'react';
 import {LLMEventPayload, LLMHistoryItem, LLMRunning, LLMSession, toLLMEventPayload, toLLMResponse, toLLMSession, toLLMHistoryItem} from '../interfaces';
 import LLMInfo from './LLMInfo';
 import {InnerCard} from './InnerCard';
 
 import {invoke} from '@tauri-apps/api/tauri';
 import {Store} from "tauri-plugin-store-api";
+import {ErrorContext} from '../context';
 // import { Link } from 'react-router-dom';
 
 // Define new types for history and user parameters
@@ -40,7 +41,7 @@ const coerceInput = (input: string): any => {
   try {
     const parsedJson = JSON.parse(input);
     return parsedJson;
-  } catch (error) {
+  } catch (error: any) {
     return input;
   }
 }
@@ -62,6 +63,7 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
   const [cancellationStatus, setCancellationStatus] = useState<{[key: string]: boolean}>({});
   const [cancellationSuccessful, setCancellationSuccessful] = useState<{[key: string]: boolean}>({});
 
+  const errorContext = useContext(ErrorContext);
 
   useEffect(() => {
     fetchSessions();
@@ -245,6 +247,7 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
       await invoke('prompt_session', {llmUuid: llm.uuid, sessionId: selectedSessionId, prompt: sessionMessage, parameters: userParametersState})
         .catch((err) => {
           console.error(err);
+          errorContext.sendError(err.message);
           setError("Failed to call the session.");
         });
     } else {
@@ -266,6 +269,7 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
       })
       .catch((err) => {
         console.error(err);
+        errorContext.sendError(err.message);
         setError("Failed to interrupt session.");
       });
   };
@@ -285,6 +289,7 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
         return toLLMResponse((response as any).data);
       }).catch((err) => {
         console.log(err);
+        errorContext.sendError(err.message);
         setError("Failed to create a new session.");
       });
   };
@@ -304,7 +309,7 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
         <Box>
           <InnerCard title={"Interface"}>
             <Box sx={{borderBottom: "2 solid black"}}>
-              <Select value={selectedSessionId} onChange={(e) => setSelectedSessionId(e.target.value)}>
+              <Select value={selectedSessionId} onBlur={(e) => setSelectedSessionId(e.target.value)}>
                 <MenuItem key="new" value='New Session'>New Session</MenuItem>
                 {activeSessions.sort((a, b) => b.lastCalled.getTime() - a.lastCalled.getTime()).map((session) => (
                   <MenuItem key={session.id} value={session.id}>{session.name ? `${session.name}` : `${session.id}`}</MenuItem>
@@ -436,7 +441,7 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
                             <Grid item key={index}>
                               <TextField
                                 label={paramName}
-                                onChange={(e) => handleParameterChange(paramName, e.target.value)}
+                                onBlur={(e) => handleParameterChange(paramName, e.target.value)}
                                 variant="outlined"
                               />
                             </Grid>
@@ -466,8 +471,9 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
                       <Box key={index}>
                         <TextField
                           label={paramName}
-                          onChange={(e) => handleSessionParameterChange(paramName, e.target.value)}
+                          onBlur={(e) => handleSessionParameterChange(paramName, e.target.value)}
                           variant="outlined"
+                          defaultValue={llm.sessionParameters[paramName]}
                         />
                       </Box>
                     ))}
@@ -480,8 +486,9 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
                         <Grid item key={index}>
                           <TextField
                             label={paramName}
-                            onChange={(e) => handleParameterChange(paramName, e.target.value)}
+                            onBlur={(e) => handleParameterChange(paramName, e.target.value)}
                             variant="outlined"
+                            defaultValue={llm.parameters[paramName]}
                           />
                         </Grid>
                       ))}

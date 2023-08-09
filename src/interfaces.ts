@@ -3,9 +3,10 @@ import {sanitizeUrl} from "@braintree/sanitize-url";
 
 
 interface LLMCapabilities {
+  general: number;
   assistant: number,
   coding: number,
-  writer: number,
+  writing: number,
 }
 interface LLM {
   id: string;
@@ -95,7 +96,8 @@ export const produceEmptyRegistryEntry = (): LLMRegistryEntry => {
     capabilities: {
       assistant: -1,
       coding: -1,
-      writer: -1,
+      writing: -1,
+      general: -1,
     }, // initialize with default capabilities object
     downloadState: LLMDownloadState.NotDownloaded,
     backendUuid: '',
@@ -103,7 +105,7 @@ export const produceEmptyRegistryEntry = (): LLMRegistryEntry => {
     requirements: '',
     license: '',
     parameters: {}, // initialize with default LLMRegistry array
-    userParameters: ["top_k", "top_p", "repeat_penalty", "temperature", "bias_token", "repetition_penalty_last_n"],
+    userParameters: ["top_k", "top_p", "repeat_penalty", "temperature", "bias_token", "repetition_penalty_last_n", "pre_prompt", "post_prompt"],
     sessionParameters: {}, // initialize with default LLMRegistry array
     userSessionParameters: [],
     config: {}, // initialize with default config object
@@ -139,10 +141,12 @@ function toLLMRegistryEntryExternal(remoteData: LLMRegistryEntry): LLMRegistryEn
       } else if (typeof entry[key] === 'object' && typeof remoteData[key] === 'object') {
         (entry[key] as object) = {};
         for (let subKey in (remoteData[key] as object)) {
-          if (typeof (remoteData[key] as {[key: string]: number})[subKey] === 'number') {
-            ((entry[key] as {[key: string]: number})[subKey] as number) = ((remoteData[key] as {
-              [key: string]: number
-            })[subKey] as number)
+          if (typeof (remoteData[key] as any)[subKey] === 'number') {
+            ((entry[key] as any)[subKey] as number) = ((remoteData[key] as any)[subKey] as number)
+            // if (typeof (remoteData[key] as {[key: string]: number})[subKey] === 'number') {
+            //   ((entry[key] as {[key: string]: number})[subKey] as number) = ((remoteData[key] as {
+            //     [key: string]: number
+            //   })[subKey] as number)
 
 
           }
@@ -203,30 +207,146 @@ function fromLLMRegistryEntry(frontendEntry: LLMRegistryEntry): any {
 }
 
 
-enum LLMRequestType {
-  Load = "load",
-  Download = "download",
-  Unload = "unload"
+enum UserRequestType {
+  Load = "LoadRequest",
+  Download = "DownloadRequest",
+  Unload = "UnloadRequest",
+  Permission = "PermissionRequest"
 }
 
-interface LLMRequest extends LLM {
-  type: LLMRequestType,
+
+// pub struct UserRequest {
+//     pub id: DbUuid,
+//     pub user_id: DbUuid,
+//     pub reason: String,
+//     pub timestamp: DateTime<Utc>,
+//     pub originator: String,
+//     pub request: UserRequestType,
+//     pub complete: bool,
+//     pub accepted: bool,
+// }
+
+
+interface BaseUserRequest {
+  id: string,
+  userId: string,
+  reason: string,
+  timestamp: Date,
+  originator: string,
+  complete: boolean,
+  accepted: boolean,
   requester: string, // This is a uuid
   [addlInfo: string]: unknown
 }
 
-interface LLMDownloadRequest extends LLMRequest {
-  type: LLMRequestType.Download,
-  entry: LLMRegistryEntry,
+interface UserDownloadRequest extends BaseUserRequest {
+    type: UserRequestType.Download,
+  request: {
+    llmRegistryEntry: LLMRegistryEntry,
+  }
 }
 
-interface LLMLoadRequest extends LLMRequest {
-  type: LLMRequestType.Load,
+interface UserLoadRequest extends BaseUserRequest {
+    type: UserRequestType.Load,
+  request: {
+    llmId: string,
+  }
 }
 
-interface LLMUnloadRequest extends LLMRequest {
-  type: LLMRequestType.Unload,
+interface UserUnloadRequest extends BaseUserRequest {
+    type: UserRequestType.Unload,
+  request: {
+    llmId: string,
+  }
 }
+
+interface UserPermissionRequest extends BaseUserRequest {
+    type: UserRequestType.Permission,
+  request: {
+    requestedPermissions: string,
+  }
+}
+
+type UserRequest = UserDownloadRequest | UserLoadRequest | UserUnloadRequest | UserPermissionRequest;
+// pub struct Permissions {
+//     // We flatten these in here for easier DB storage.
+//     pub perm_superuser: bool,
+//     pub perm_load_llm: bool,
+//     pub perm_unload_llm: bool,
+//     pub perm_download_llm: bool,
+//     pub perm_session: bool, //this is for create_sessioon AND prompt_session
+//     pub perm_request_download: bool,
+//     pub perm_request_load: bool,
+//     pub perm_request_unload: bool,
+//     pub perm_view_llms: bool,
+// }
+
+
+function toUserPermissions(permissions: any) {
+  return {
+    permSuperuser: permissions.perm_superuser || false,
+    permLoadLlm: permissions.perm_load_llm || false,
+    permUnloadLlm: permissions.perm_unload_llm || false,
+    permDownloadLlm: permissions.perm_download_llm || false,
+    permSession: permissions.perm_session || false,
+    permRequestDownload: permissions.perm_request_download || false,
+    permRequestLoad: permissions.perm_request_load || false,
+    permRequestUnload: permissions.perm_request_unload || false,
+    permViewLlms: permissions.perm_view_llms || false
+  };
+}
+
+function toUserRequest(request: any): UserRequest {
+  const converted: BaseUserRequest = {
+    id: request.id || '',
+    userId: request.user_id || '',
+    reason: request.reason || '',
+    timestamp: new Date(request.timestamp), // Convert to JS Date object
+    originator: request.originator || '',
+    complete: request.complete || false,
+    accepted: request.accepted || false,
+    requester: request.requester || ''
+  };
+
+  console.log("request2", request);
+  switch (request.request.type) {
+    case UserRequestType.Download:
+      converted.type = UserRequestType.Download;
+      // Assuming you have the toLLMRegistryEntryExternal function:
+      // converted.request = {
+      //     llmRegistryEntry: toLLMRegistryEntryExternal(request.llmRegistryEntry)
+      // };
+      // For this example, I'll set it as is:
+      converted.request = {
+        llmRegistryEntry: toLLMRegistryEntryExternal(request.request.llm_registry_entry)
+      };
+      return converted as UserDownloadRequest;
+    case UserRequestType.Load:
+      converted.type = UserRequestType.Load;
+      converted.request = {
+        llmId: request.llm_id
+      };
+      return converted as UserLoadRequest;
+    case UserRequestType.Unload:
+      converted.type = UserRequestType.Unload;
+      converted.request = {
+        llmId: request.llm_id
+      };
+      return converted as UserUnloadRequest;
+    case UserRequestType.Permission:
+      converted.type = UserRequestType.Permission;
+      converted.request = {
+        requestedPermissions: toUserPermissions(request.request.requested_permissions)
+      };
+      return converted as UserPermissionRequest;
+    default:
+      break;
+  }
+  throw new Error("conversion failure", request);
+
+}
+
+
 
 /*
 Frankly horrible that we need this, but we do.
@@ -454,10 +574,11 @@ export type {
   LLMAvailable,
   LLMRunning,
   LLMResponse,
-  LLMRequest,
-  LLMDownloadRequest,
-  LLMLoadRequest,
-  LLMUnloadRequest,
+  UserRequest,
+  UserPermissionRequest,
+  UserDownloadRequest,
+  UserLoadRequest,
+  UserUnloadRequest,
   LLMRegistry,
   LLMRegistryRegistry,
   LLMRegistryEntry,
@@ -469,7 +590,7 @@ export type {
   EmitterEvent,
 }
 export {
-  LLMRequestType,
+  UserRequestType,
   keysToCamelUnsafe,
   LLMDownloadState,
   LLMRegistryEntryConnector,
@@ -524,26 +645,7 @@ function toLLMResponse(rustLLMResponse: any): LLMResponse {
 
 }
 
-function toLLMRequest(rustLLMRequest: any): LLMRequest {
-  const type = rustLLMRequest.type.toLowerCase() as LLMRequestType;
-
-  const baseRequest: LLMRequest = {
-    ...toLLM(rustLLMRequest.llm_info),
-    type: type,
-    requester: rustLLMRequest.requester,
-  };
-
-  if (type === LLMRequestType.Download) {
-    return {
-      ...(baseRequest as any),
-      url: rustLLMRequest.url,
-    };
-  }
-
-  return baseRequest;
-}
 
 
-
-export {toLLM, toLLMAvailable, toLLMRunning, toLLMRequest, toLLMResponse, toLLMRegistryEntry, toLLMRegistryEntryExternal, fromLLMRegistryEntry, toLLMSession, toLLMHistoryItem, toLLMEventPayload, };
+export {toLLM, toLLMAvailable, toLLMRunning, toUserRequest, toLLMResponse, toLLMRegistryEntry, toLLMRegistryEntryExternal, fromLLMRegistryEntry, toLLMSession, toLLMHistoryItem, toLLMEventPayload, };
 
