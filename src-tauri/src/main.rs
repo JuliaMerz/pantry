@@ -5,6 +5,7 @@ use crate::connectors::llm_manager;
 
 use dashmap::DashMap;
 use diesel::prelude::*;
+use diesel::connection::SimpleConnection;
 use diesel::r2d2::ConnectionManager;
 use diesel::r2d2::Pool;
 use diesel::sqlite::Sqlite;
@@ -51,16 +52,51 @@ mod server;
 mod state;
 mod user;
 
+#[derive(Debug)]
+pub struct ConnectionOptions {
+    pub enable_wal: bool,
+    pub enable_foreign_keys: bool,
+    pub busy_timeout: Option<Duration>,
+}
+
+impl diesel::r2d2::CustomizeConnection<SqliteConnection, diesel::r2d2::Error>
+    for ConnectionOptions
+{
+    fn on_acquire(&self, conn: &mut SqliteConnection) -> Result<(), diesel::r2d2::Error> {
+        (|| {
+            if self.enable_wal {
+                conn.batch_execute("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;")?;
+            }
+            if self.enable_foreign_keys {
+                conn.batch_execute("PRAGMA foreign_keys = ON;")?;
+            }
+            if let Some(d) = self.busy_timeout {
+                conn.batch_execute(&format!("PRAGMA busy_timeout = {};", d.as_millis()))?;
+            }
+            Ok(())
+        })()
+        .map_err(diesel::r2d2::Error::QueryError)
+    }
+}
+
 pub fn get_connection_pool(db_url: String) -> Pool<ConnectionManager<SqliteConnection>> {
     // let url = database_url_for_env();
 
     let manager = ConnectionManager::<SqliteConnection>::new(db_url);
     // Refer to the `r2d2` documentation for more methods to use
     // when building a connection pool
-    Pool::builder()
+    let pool = Pool::builder()
+        .max_size(8)
+        .connection_customizer(Box::new(ConnectionOptions {
+            enable_wal: true,
+            enable_foreign_keys: true,
+            busy_timeout: Some(Duration::from_secs(10)),
+        }))
         .test_on_check_out(true)
         .build(manager)
-        .expect("Could not build connection pool")
+        .expect("Could not build connection pool");
+    pool
+
 }
 
 // pub fn establish_connection() -> SqliteConnection {
@@ -74,7 +110,7 @@ fn run_migrations(
     //
     // See the documentation for `MigrationHarness` for
     // all available methods.
-    println!("Mirations:\n{:?}", connection.revert_all_migrations(MIGRATIONS));
+    // println!("Mirations:\n{:?}", connection.revert_all_migrations(MIGRATIONS));
     // println!("Mirations:\n{:?}", connection.applied_migrations());
     connection.run_pending_migrations(MIGRATIONS)?;
 
@@ -128,7 +164,8 @@ async fn main() {
     let context = tauri::generate_context!();
 
     let mut db_path = tauri::api::path::app_local_data_dir(context.config()).unwrap();
-    let llm_path = tauri::api::path::local_data_dir().unwrap();
+    let mut llm_path = tauri::api::path::local_data_dir().unwrap();
+    llm_path.push("pantry");
 
     if !llm_path.exists() {
         fs::create_dir_all(&llm_path).unwrap();

@@ -322,6 +322,7 @@ pub fn update_permissions(
 ) -> Result<usize, diesel::result::Error> {
     let conn = &mut pool.get().unwrap();
     use schema::user::dsl::*;
+    println!("Updating to {:?}", perms);
     diesel::update(user)
         .filter(id.eq(DbUuid(user_id)))
         .set((perm_superuser.eq(perms.perm_superuser),
@@ -332,7 +333,8 @@ pub fn update_permissions(
         perm_request_download.eq(perms.perm_request_download),
         perm_request_load.eq(perms.perm_request_load),
         perm_request_unload.eq(perms.perm_request_unload),
-        perm_view_llms.eq(perms.perm_view_llms)))
+        perm_view_llms.eq(perms.perm_view_llms),
+        perm_bare_model.eq(perms.perm_bare_model)))
         .execute(conn)
 }
 

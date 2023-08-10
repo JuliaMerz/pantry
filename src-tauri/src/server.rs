@@ -263,10 +263,12 @@ async fn register_user(
     let user = user::User::new(payload.user_name);
     match database::save_new_user(user, state.pool.clone()) {
         Ok(user) => Ok(Json((&user).into())),
-        Err(err) => Err((
+        Err(err) => {
+            println!("Error creating user: {:?}", err.to_string());
+            Err((
             StatusCode::INTERNAL_SERVER_ERROR,
             "Error creating user".into(),
-        )),
+        ))},
     }
 }
 
@@ -1523,7 +1525,7 @@ async fn bare_model_flex(
     state: State<state::GlobalStateWrapper>,
     Json(payload): Json<BareModelFlexRequest>,
 ) -> Result<Json<BareModelResponse>, (StatusCode, String)> {
-    println!("Called bare_mode_flex from API.");
+    println!("Called bare_model_flex from API.");
     let user_uuid =
         Uuid::parse_str(&payload.user_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     let user = user_permission_check("bare_model", payload.api_key, user_uuid, state.pool.clone())?;
@@ -1706,7 +1708,7 @@ async fn bare_model(
     state: State<state::GlobalStateWrapper>,
     Json(payload): Json<BareModelRequest>,
 ) -> Result<Json<BareModelResponse>, (StatusCode, String)> {
-    println!("Called load_llm from API.");
+    println!("Called bare_model from API.");
     let user_uuid =
         Uuid::parse_str(&payload.user_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
 

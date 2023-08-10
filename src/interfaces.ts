@@ -292,7 +292,8 @@ function toUserPermissions(permissions: any) {
     permRequestDownload: permissions.perm_request_download || false,
     permRequestLoad: permissions.perm_request_load || false,
     permRequestUnload: permissions.perm_request_unload || false,
-    permViewLlms: permissions.perm_view_llms || false
+    permViewLlms: permissions.perm_view_llms || false,
+    permBareModel: permissions.perm_bare_model || false
   };
 }
 
