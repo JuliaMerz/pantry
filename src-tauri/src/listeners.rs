@@ -9,9 +9,6 @@ use axum::routing::Router;
 
 // Bind the Unix socket
 
-#[cfg(target_family = "windows")]
-async fn create_listeners(app: Router) {}
-
 async fn flatten<T>(handle: tokio::task::JoinHandle<Result<T, hyper::Error>>) -> Result<T, String> {
     match handle.await {
         Ok(Ok(result)) => Ok(result),
@@ -93,7 +90,7 @@ pub async fn create_listeners(
 // yet and fixes currently out aren't super mature yet.
 #[cfg(target_family = "windows")]
 pub async fn create_listeners(
-    app: Router<state::GlobalStateWrapper, axum::body::Body>,
+    app: Router<(), axum::body::Body>,
     rx: oneshot::Receiver<()>,
 ) -> Result<(), String> {
     // Create an Axum `Server` using the Unix socket listener
