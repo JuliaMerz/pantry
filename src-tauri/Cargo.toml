@@ -38,7 +38,6 @@ tokio-util = "0.7.8"
 axum = "0.6.18"
 axum-macros = "0.3.8"
 hyper = "0.14"
-hyperlocal = "0.8"
 diesel_migrations = {version = "2.1.0", features = ["sqlite"] }
 diesel = { version="2.1.0", features = ["sqlite", "postgres", "uuid", "serde_json", "chrono", "r2d2"] }
 libsqlite3-sys = { version = "0.25.2", features = ["bundled"] }
@@ -47,6 +46,10 @@ r2d2 = "0.8.10"
 futures = "0.3.28"
 url = { version = "2", features = ["serde"] }
 tokio-stream = "0.1.14"
+
+[target.'cfg(not(windows))'.dependencies]
+hyperlocal = { version = "0.8" }
+
 
 
 

@@ -2,7 +2,6 @@
 use crate::state;
 use axum;
 use hyper::Server;
-use hyperlocal::UnixServerExt;
 use std::fs;
 use tokio::sync::oneshot;
 
@@ -22,6 +21,8 @@ async fn flatten<T>(handle: tokio::task::JoinHandle<Result<T, hyper::Error>>) ->
 }
 
 #[cfg(target_family = "unix")]
+use hyperlocal::UnixServerExt;
+
 pub async fn create_listeners(
     app: Router<(), axum::body::Body>,
     rx: oneshot::Receiver<()>,
