@@ -20,6 +20,7 @@ async fn flatten<T>(handle: tokio::task::JoinHandle<Result<T, hyper::Error>>) ->
 #[cfg(target_family = "unix")]
 use hyperlocal::UnixServerExt;
 
+#[cfg(target_family = "unix")]
 pub async fn create_listeners(
     app: Router<(), axum::body::Body>,
     rx: oneshot::Receiver<()>,
