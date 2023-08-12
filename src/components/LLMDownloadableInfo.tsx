@@ -138,11 +138,7 @@ const LLMDownloadableInfo: React.FC<LLMDownloadableInfoProps> = ({llm, registry,
             : llm.downloadState === LLMDownloadState.Downloaded ? <Button variant="contained" onClick={downloadClick}>Redownload</Button> : <Button variant="contained" onClick={downloadClick} >Download</Button>
         } />
         <Typography variant="body1"><b>Requirements:</b> {llm.requirements}</Typography>
-        <Typography variant="body1"><b>User Parameters:</b> {llm.userParameters.join(", ")}</Typography>
         <Typography variant="body1"><b>Capabilities:</b> {JSON.stringify(llm.capabilities)}</Typography>
-        <Typography variant="body1"><b>Parameters:</b> {JSON.stringify(llm.parameters)}</Typography>
-        <Typography variant="body1"><b>Session Parameters:</b> {JSON.stringify(llm.sessionParameters)}</Typography>
-        <Typography variant="body1"><b>Config:</b> {JSON.stringify(llm.config)}</Typography>
         <Button variant="contained" onClick={handleOpenDelete} color="error">Delete</Button>
 
         <Modal

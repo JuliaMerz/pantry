@@ -1,7 +1,7 @@
 // src/components/LLMInfo.tsx
 import {forwardRef, useState, useMemo, useContext, useEffect} from "react";
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
-import { Buffer } from 'buffer';
+import {Buffer} from 'buffer';
 import React from 'react';
 import ReactJsonView from 'react-json-view';
 import {ReactElement} from 'react';
@@ -101,7 +101,9 @@ const LLMInfo: React.FC<LLMInfoProps> = ({
         <InnerCard title={"Details"}>
           <Box>
             <Typography variant="h4">Additional Configs</Typography>
-            <Typography variant="h5">User Parameters</Typography>
+            {Object.keys(llm.userParameters).length > 0 || Object.keys(llm.userSessionParameters).length > 0 ? (
+              <Typography variant="h5">User Configurable Parameters</Typography>
+            ) : null}
             {Object.keys(llm.userParameters).length > 0 ? (
               <TableContainer component={Paper}>
                 <Table size="small" aria-label="llm details">
@@ -120,51 +122,93 @@ const LLMInfo: React.FC<LLMInfoProps> = ({
                 </Table>
               </TableContainer>
             ) : null}
-            <Typography variant="h5">System Configs</Typography>
-            <Typography variant="h6">Parameters</Typography>
-            {Object.keys(llm.parameters).length > 0 ? (
+            {Object.keys(llm.userSessionParameters).length > 0 ? (
               <TableContainer component={Paper}>
                 <Table size="small" aria-label="llm details">
                   <TableHead>
                     <TableRow>
                       <TableCell>Parameter</TableCell>
-                      <TableCell>Value</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {Object.entries(llm.parameters).map(([paramName, paramValue], index) => (
+                    {llm.userSessionParameters.map((paramName, index) => (
                       <TableRow key={index}>
                         <TableCell>{paramName}</TableCell>
-                        <TableCell>{paramValue}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
               </TableContainer>
             ) : null}
+            <Typography variant="h5">System Configs</Typography>
+            {Object.keys(llm.sessionParameters).length > 0 ? (
+              <>
+                <Typography variant="h6">Default Session Parameters</Typography>
+                <TableContainer component={Paper}>
+                  <Table size="small" aria-label="llm details">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Parameter</TableCell>
+                        <TableCell>Value</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {Object.entries(llm.sessionParameters).map(([paramName, paramValue], index) => (
+                        <TableRow key={index}>
+                          <TableCell>{paramName}</TableCell>
+                          <TableCell>{paramValue}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer></>
+            ) : null}
+            {Object.keys(llm.parameters).length > 0 ? (
+              <>
+                <Typography variant="h6">Default Inference Parameters</Typography>
+                <TableContainer component={Paper}>
+                  <Table size="small" aria-label="llm details">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Parameter</TableCell>
+                        <TableCell>Value</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {Object.entries(llm.parameters).map(([paramName, paramValue], index) => (
+                        <TableRow key={index}>
+                          <TableCell>{paramName}</TableCell>
+                          <TableCell>{paramValue}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer></>
+            ) : null}
             <Typography variant="body1">
               <strong>Connector Type: </strong>{llm.connectorType}
             </Typography>
-            <Typography variant="h6">Connector Config</Typography>
-            {Object.keys(llm.parameters).length > 0 ? (
-              <TableContainer component={Paper}>
-                <Table size="small" aria-label="llm details">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Parameter</TableCell>
-                      <TableCell>Value</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {Object.entries(llm.config).map(([paramName, paramValue], index) => (
-                      <TableRow key={index}>
-                        <TableCell>{paramName}</TableCell>
-                        <TableCell>{paramValue}</TableCell>
+            {Object.keys(llm.config).length > 0 ? (
+              <>
+                <Typography variant="h6">Connector Config</Typography>
+                <TableContainer component={Paper}>
+                  <Table size="small" aria-label="llm details">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Parameter</TableCell>
+                        <TableCell>Value</TableCell>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
+                    </TableHead>
+                    <TableBody>
+                      {Object.entries(llm.config).map(([paramName, paramValue], index) => (
+                        <TableRow key={index}>
+                          <TableCell>{paramName}</TableCell>
+                          <TableCell>{paramValue}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer></>
             ) : null}
           </Box>
         </InnerCard>
