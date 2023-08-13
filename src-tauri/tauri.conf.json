@@ -31,8 +31,8 @@
       "active": true,
       "icon": [
         "icons/tauri-icon-bw-32.png",
-        "icons/tauri-icon-bw-128.png.png",
-        "icons/tauri-icon-bw-256.png.png",
+        "icons/tauri-icon-bw-128.png",
+        "icons/tauri-icon-bw-256.png",
         "icons/tauri-icon-bw-1024.icns",
         "icons/tauri-icon-bw-256.ico"
       ],
