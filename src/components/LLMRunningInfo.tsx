@@ -436,7 +436,9 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
                     <Box>
                       <form onSubmit={handleSessionSubmit}>
                         <Typography component="label">Parameters:</Typography>
-                        <Grid container sx={{marginY: 2}} spacing={{xs: 2, md: 3}}>
+                        <Grid container sx={{
+                          marginY: 1
+                        }} columnSpacing={2} rowSpacing={0}>
                           {Object.entries(userParametersState).map(([paramName, paramValue], index) => (
                             <Grid item key={index}>
                               <TextField
@@ -449,8 +451,12 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
                         </Grid>
                         <Box>
                           <TextField
-                            label="Session Message"
+                            label="Session Message (*)"
                             multiline
+                            sx={{
+                              width: '100%',
+
+                            }}
                             value={sessionMessage}
                             onChange={handleSessionMessageChange}
                             variant="outlined"
@@ -466,37 +472,48 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
                 <Box>
                   <Typography variant="h5">Create a New Session</Typography>
                   <form onSubmit={handleNewSessionSubmit}>
-                    <Typography component="label">Session Parameters:</Typography>
-                    {Object.entries(userSessionParametersState).map(([paramName, paramValue], index) => (
-                      <Box key={index}>
-                        <TextField
-                          label={paramName}
-                          onBlur={(e) => handleSessionParameterChange(paramName, e.target.value)}
-                          variant="outlined"
-                          defaultValue={llm.sessionParameters[paramName]}
-                        />
-                      </Box>
-                    ))}
-                    <Typography component="label">User Parameters:</Typography>
-                    <Grid container sx={{
+                    {Object.keys(userSessionParametersState).length > 0 ? (
+                      <>
+                        <Typography component="label">Session Parameters (Optional):</Typography>
+                        {Object.entries(userSessionParametersState).map(([paramName, paramValue], index) => (
+                          <Box key={index}>
+                            <TextField
+                              label={paramName}
+                              onBlur={(e) => handleSessionParameterChange(paramName, e.target.value)}
+                              variant="outlined"
+                              defaultValue={llm.sessionParameters[paramName]}
+                            />
+                          </Box>
+                        ))}</>
+                    ) : null}
+                    {Object.keys(userParametersState).length > 0 ? (
+                      <>
+                        <Typography component="label">User Parameters (Optional):</Typography>
+                        <Grid container sx={{
 
-                      marginY: 2
-                    }} spacing={{xs: 2, md: 3}}>
-                      {Object.entries(userParametersState).map(([paramName, paramValue], index) => (
-                        <Grid item key={index}>
-                          <TextField
-                            label={paramName}
-                            onBlur={(e) => handleParameterChange(paramName, e.target.value)}
-                            variant="outlined"
-                            defaultValue={llm.parameters[paramName]}
-                          />
+                          marginY: 1
+                        }} columnSpacing={2} rowSpacing={0}>
+                          {Object.entries(userParametersState).map(([paramName, paramValue], index) => (
+                            <Grid item key={index}>
+                              <TextField
+                                label={paramName}
+                                onBlur={(e) => handleParameterChange(paramName, e.target.value)}
+                                variant="outlined"
+                                defaultValue={llm.parameters[paramName]}
+                              />
+                            </Grid>
+                          ))}
                         </Grid>
-                      ))}
-                    </Grid>
+                      </>
+                    ) : null}
                     <Box>
                       <TextField
-                        label="Message"
+                        label="Message (*)"
                         multiline
+                        sx={{
+                          width: '100%',
+
+                        }}
                         minRows={4}
                         value={message}
                         onChange={handleMessageChange}
@@ -513,8 +530,8 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
           <Typography variant="body2"><small>Downloaded: {llm.downloaded}</small></Typography>
           <Typography variant="body2"><small>Activated: {llm.activated}</small></Typography>
         </Box>
-      </CardContent>
-    </Card>
+      </CardContent >
+    </Card >
 
   );
 

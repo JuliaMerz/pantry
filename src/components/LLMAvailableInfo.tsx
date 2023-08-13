@@ -15,14 +15,16 @@ import {LLMAvailable} from '../interfaces';
 
 type LLMAvailableInfoProps = {
   llm: LLMAvailable
+  alreadyLoaded: boolean,
 }
 
 const LLMAvailableInfo: React.FC<LLMAvailableInfoProps> = ({
-  llm
+  llm,
+  alreadyLoaded
 }) => {
 
   // Use this for enabling the LLM
-  const [checked, setChecked] = React.useState(false);
+  const [checked, setChecked] = React.useState(alreadyLoaded);
   const [openModal, setOpenModal] = useState(false);
   const [deleted, setDeleted] = useState(false);
 

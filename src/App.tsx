@@ -1,8 +1,9 @@
-import {forwardRef, useRef, useState, useMemo, useEffect} from "react";
+import {forwardRef, useRef, useState, useMemo, useEffect, useCallback} from "react";
 import {deepmerge} from "@mui/utils";
 import {listen} from '@tauri-apps/api/event';
 import {produceEmptyRegistryEntry} from './interfaces';
 import {Buffer} from 'buffer';
+import logoImage from './assets/tauri-icon-bw-128.png';
 import {addRegistryEntry, downloadLLM} from './registryHelpers';
 import reactLogo from "./assets/react.svg";
 import {invoke} from "@tauri-apps/api/tauri";
@@ -65,18 +66,6 @@ function LinkTab(props: any) {
   return <Tab component={NavLink} {...props} />;
 }
 
-const LinkRef = forwardRef<HTMLAnchorElement, NavLinkProps>((props, ref) => <NavLink ref={ref} {...props} />);
-
-function MenuItemLink(props: any) {
-  const {value, to, primary} = props;
-  return (
-    <MenuItem value={value}>
-      <ListItemButton component={LinkRef} to={to}>
-        <ListItemText primary={primary} />
-      </ListItemButton>
-    </MenuItem>
-  );
-}
 
 interface OngoingNotification {
   lastId: number,
@@ -88,11 +77,13 @@ interface OngoingNotification {
 
 function App() {
   const [mode, setMode] = useState<PaletteMode>("light");
-  const [value, setValue] = useState('home');
+  const [locationText, setLocationText] = useState('Home');
+  const [location, setLocation] = useState('home');
   const [latestEvent, setLatestEvent] = useState('test');
   const [downloadModalOpen, setDownloadModalOpen] = useState(false);
   const [lastError, setLastError] = useState('');
   const [downloadRegistryEntry, setDownloadRegistryEntry] = useState(produceEmptyRegistryEntry());
+
 
   // stream-id: string, notification
   const [ongoingNotifications, setOngoingNotifications] = useState<{[key: string]: OngoingNotification}>({});
@@ -142,14 +133,30 @@ function App() {
     [mode]
   );
 
+  const LinkRef = useCallback(forwardRef<HTMLAnchorElement, NavLinkProps>((props, ref) => <NavLink ref={ref} {...props} />), []);
 
-  const handleChange = (event: any, newValue: string) => {
-    setValue(newValue);
-  };
+  const MenuItemLink = useCallback((props: {value: string, value2: string, to: string, primary: string}) => {
+    const {value2, to, primary} = props;
+    return (
+      <MenuItem value={value2}>
+        <ListItemButton component={LinkRef} to={to}
+          onClick={(e) => {console.log('wutut'); handleSelectChange(e, value2)}}>
+          <ListItemText primary={primary} />
+        </ListItemButton>
+      </MenuItem>
+    );
+  }, []);
 
-  const handleSelectChange = (event: any) => {
-    setValue(event.target.value);
-  };
+  const handleChange = useCallback((event: any, newValue: string) => {
+    console.log("whooo2", event, newValue);
+    setLocation(newValue);
+  }, []);
+
+  const handleSelectChange = useCallback((event: any, newValue: string) => {
+    console.log("WHOOPS", event, newValue);
+    setLocation(newValue);
+    setLocationText(event.target.outerText);
+  }, []);
 
   const handleBookmark = async () => {
     await addRegistryEntry(downloadRegistryEntry, 'shared');
@@ -270,23 +277,35 @@ function App() {
           <Router>
             <AppBar position="sticky">
               <Toolbar>
+                <Box
+                  component="img"
+                  sx={{
+                    height: '48px',
+                    // width: 350,
+                    // maxHeight: { xs: 233, md: 167 },
+                    // maxWidth: { xs: 350, md: 250 },
+                  }}
+                  alt="The house from the offer."
+                  src={logoImage}
+                />
                 <Typography variant="h6" component="div" sx={{flexGrow: 1}}>
-                  Logo
+                  Pantry
                 </Typography>
                 {isMobile ? (
                   <>
-                    <InputLabel>{value}</InputLabel>
-                    <Select value={value} onChange={handleSelectChange}>
-                      <MenuItemLink value="home" to="/" primary="Home" />
-                      <MenuItemLink value="available-llms" to="/available-llms" primary="Available LLMs" />
-                      <MenuItemLink value="download-llms" to="/download-llms" primary="Download LLMs" />
-                      <MenuItemLink value="requests" to="/requests" primary="Requests" />
-                      <MenuItemLink value="settings" to="/settings" primary="Settings" />
+
+                    <InputLabel>{locationText}</InputLabel>
+                    <Select value={location} >
+                      <MenuItemLink value="home" value2="home" to="/" primary="Home" />
+                      <MenuItemLink value="available-llms" value2="available-llms" to="/available-llms" primary="Available LLMs" />
+                      <MenuItemLink value="download-llms" value2="download-llms" to="/download-llms" primary="Download LLMs" />
+                      <MenuItemLink value="requests" value2="requests" to="/requests" primary="Requests" />
+                      <MenuItemLink value="settings" value2="settings" to="/settings" primary="Settings" />
                     </Select>
                   </>
 
                 ) : (
-                  <Tabs value={value} onChange={handleChange}>
+                  <Tabs value={location} onChange={handleChange}>
                     <LinkTab label="Home" to="/" value="home" />
                     <LinkTab label="Available LLMs" to="/available-llms" value="available-llms" />
                     <LinkTab label="Download LLMs" to="/download-llms" value="download-llms" />
