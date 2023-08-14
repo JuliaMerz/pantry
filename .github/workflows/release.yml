@@ -30,6 +30,7 @@ jobs:
       - name: install frontend dependencies
         run: yarn install 
       - name: Decode auth api key and save
+        if: matrix.platform == 'macos-latest'
         env:
           API_KEY_BASE64: ${{ secrets.APPLE_API_CERT_BASE64 }}
         run: |
