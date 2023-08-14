@@ -35,7 +35,7 @@ jobs:
         run: |
           mkdir ~/private_keys
           ls ~/private_keys
-          echo -n “$API_KEY_BASE64” | base64 —decode —output ~/private_keys/AuthKey_${{ secrets.APPLE_API_KEY }}.p8
+          echo -n “$API_KEY_BASE64” | base64 --decode --output ~/private_keys/AuthKey_${{ secrets.APPLE_API_KEY }}.p8
           echo “After saving: “
           ls ~/private_keys
       - uses: tauri-apps/tauri-action@v0
