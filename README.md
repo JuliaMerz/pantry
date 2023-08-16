@@ -1,7 +1,8 @@
 # Pantry
 
-Pantry is like brew for LLMS—it combines an LLM repository, a local LLM runner,
-and a language agnostic integration API.
+Pantry is like homebrew for LLMs. It combines an LLM repository, a local LLM runner,
+and a language agnostic integration API. So you can play with  or integrate LLMs
+without managing the underlying models.
 
 ## Getting Started
 
