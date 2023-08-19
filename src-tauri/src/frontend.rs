@@ -1,11 +1,11 @@
 use crate::connectors;
 use crate::connectors::llm_manager;
 use crate::database;
-use crate::request;
 use crate::emitter;
 use crate::llm;
 use crate::llm::LLMWrapper;
 use crate::registry;
+use crate::request;
 use crate::state;
 use crate::user;
 use chrono::serde::ts_seconds_option;
@@ -171,7 +171,6 @@ impl From<&request::UserRequest> for LLMRequestInfo {
     }
 }
 
-
 #[tauri::command]
 pub async fn get_requests(
     state: tauri::State<'_, state::GlobalStateWrapper>,
@@ -196,7 +195,6 @@ pub async fn accept_request(
     state: tauri::State<'_, state::GlobalStateWrapper>,
     app: tauri::AppHandle,
 ) -> Result<CommandResponse<()>, String> {
-
     let req_uuid = Uuid::parse_str(&request_id).map_err(|e| e.to_string())?;
 
     let req = database::get_request(req_uuid, state.pool.clone())
@@ -214,50 +212,34 @@ pub async fn accept_request(
             });
 
             database::mark_request_complete(req_uuid, true, state.pool.clone())
-        .map_err(|err| format!("Databse failure: {:?}", err))?;
+                .map_err(|err| format!("Databse failure: {:?}", err))?;
 
-            Ok(CommandResponse {
-                data: ()
-            })
-        },
+            Ok(CommandResponse { data: () })
+        }
         request::UserRequestType::PermissionRequest(pr) => {
             database::update_permissions(
                 req.user_id.0,
                 pr.requested_permissions,
                 state.pool.clone(),
             )
-        .map_err(|err| format!("Databse failure: {:?}", err))?;
+            .map_err(|err| format!("Databse failure: {:?}", err))?;
 
             database::mark_request_complete(req_uuid, true, state.pool.clone())
-        .map_err(|err| format!("Databse failure: {:?}", err))?;
+                .map_err(|err| format!("Databse failure: {:?}", err))?;
 
-            Ok(CommandResponse {
-                data: ()
-            })
-        },
+            Ok(CommandResponse { data: () })
+        }
         request::UserRequestType::LoadRequest(lr) => {
-            load_llm(
-                lr.llm_id,
-                app,
-                state.clone()).await?;
+            load_llm(lr.llm_id, app, state.clone()).await?;
             database::mark_request_complete(req_uuid, true, state.pool.clone())
-        .map_err(|err| format!("Databse failure: {:?}", err))?;
-            Ok(CommandResponse {
-                data: ()
-            })
-
-
-        },
+                .map_err(|err| format!("Databse failure: {:?}", err))?;
+            Ok(CommandResponse { data: () })
+        }
         request::UserRequestType::UnloadRequest(ur) => {
-            unload_llm(
-                ur.llm_id,
-                app,
-                state.clone()).await?;
+            unload_llm(ur.llm_id, app, state.clone()).await?;
             database::mark_request_complete(req_uuid, true, state.pool.clone())
-        .map_err(|err| format!("Databse failure: {:?}", err))?;
-            Ok(CommandResponse {
-                data: ()
-            })
+                .map_err(|err| format!("Databse failure: {:?}", err))?;
+            Ok(CommandResponse { data: () })
         }
     }
 }
@@ -271,9 +253,7 @@ pub async fn reject_request(
     database::mark_request_complete(req_uuid, false, state.pool.clone())
         .map_err(|err| format!("Databse failure: {:?}", err))?;
 
-            Ok(CommandResponse {
-                data: ()
-            })
+    Ok(CommandResponse { data: () })
 }
 
 #[tauri::command]
@@ -360,10 +340,15 @@ pub fn set_user_setting(
             user_settings.n_thread = value.as_u64().ok_or("Invalid value for 'n_thread'")? as usize
         }
         "preferred_active_sessions" => {
-            user_settings.preferred_active_sessions = value.as_u64().ok_or("Invalid value for 'preferred_active_sessions'")? as usize
+            user_settings.preferred_active_sessions = value
+                .as_u64()
+                .ok_or("Invalid value for 'preferred_active_sessions'")?
+                as usize
         }
         "dedup_downloads" => {
-            user_settings.dedup_downloads = value.as_bool().ok_or("Invalid value for 'dedup_downloads'")?
+            user_settings.dedup_downloads = value
+                .as_bool()
+                .ok_or("Invalid value for 'dedup_downloads'")?
         }
         "n_batch" => {
             user_settings.n_batch = value.as_u64().ok_or("Invalid value for 'n_batch'")? as usize
@@ -428,6 +413,7 @@ pub async fn load_llm(
         path,
         settings,
         state.pool.clone(),
+        app.clone(),
     )
     .await;
     // new_llm.load();

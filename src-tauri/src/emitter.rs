@@ -6,6 +6,7 @@ use tokio::sync::mpsc;
 #[serde(tag = "type")]
 pub enum EmitterEventPayload {
     LLMResponse(LLMEvent),
+    Notification { message: String },
     DownloadProgress { progress: String },
     DownloadCompletion,
     DownloadError { message: String },
@@ -47,4 +48,20 @@ pub async fn send_events<T: 'static>(
     };
     // println!("Emitting event {:?} on {:?}", payload, channel);
     app.emit_all(&channel, &payload).unwrap();
+}
+
+#[derive(Clone)]
+pub struct NotificationEmitter {
+    pub app: AppHandle,
+}
+
+impl NotificationEmitter {
+    pub fn send_notification(&self, stream_id: String, message: String) -> Result<(), String> {
+        let payload = EmitterEvent {
+            stream_id: stream_id.to_string(),
+            event: EmitterEventPayload::Notification { message },
+        };
+        self.app.emit_all("notification", &payload).unwrap();
+        Ok(())
+    }
 }

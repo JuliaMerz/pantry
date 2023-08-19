@@ -286,7 +286,6 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
         setSelectedSessionId((response as any).data.session_id); //raw so underscore case
         setMessage("");
         //create a new session here
-        return toLLMResponse((response as any).data);
       }).catch((err) => {
         console.log(err);
         errorContext.sendError(err.message);
@@ -309,7 +308,7 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
         <Box>
           <InnerCard title={"Interface"}>
             <Box sx={{borderBottom: "2 solid black"}}>
-              <Select value={selectedSessionId} onBlur={(e) => setSelectedSessionId(e.target.value)}>
+              <Select value={selectedSessionId} onChange={(e) => setSelectedSessionId(e.target.value)}>
                 <MenuItem key="new" value='New Session'>New Session</MenuItem>
                 {activeSessions.sort((a, b) => b.lastCalled.getTime() - a.lastCalled.getTime()).map((session) => (
                   <MenuItem key={session.id} value={session.id}>{session.name ? `${session.name}` : `${session.id}`}</MenuItem>
@@ -445,6 +444,7 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
                                 label={paramName}
                                 onBlur={(e) => handleParameterChange(paramName, e.target.value)}
                                 variant="outlined"
+                                defaultValue={llm.parameters[paramName]}
                               />
                             </Grid>
                           ))}

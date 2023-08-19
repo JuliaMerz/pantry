@@ -1,4 +1,4 @@
-use crate::state;
+use crate::{emitter, state};
 use crate::{llm::LLMSession, user};
 use chrono::prelude::*;
 use diesel::deserialize::FromSql;
@@ -77,12 +77,14 @@ impl ToSql<diesel::sql_types::Text, Sqlite> for LLMConnectorType {
 
 pub fn get_new_llm_connector(
     connector_type: LLMConnectorType,
+    id: String,
     uuid: Uuid,
     data_path: PathBuf,
     config: HashMap<String, Value>,
     model_path: Option<PathBuf>,
     user_settings: state::UserSettings,
     pool: Pool<ConnectionManager<SqliteConnection>>,
+    notification_emitter: emitter::NotificationEmitter,
 ) -> Box<dyn LLMInternalWrapper> {
     match connector_type {
         LLMConnectorType::GenericAPI => Box::new(generic::GenericAPIConnector::new(
@@ -91,6 +93,7 @@ pub fn get_new_llm_connector(
             config,
             user_settings,
             pool,
+            // notification_emitter,
         )),
         LLMConnectorType::OpenAI => Box::new(openai::OpenAIConnector::new(
             uuid,
@@ -98,14 +101,17 @@ pub fn get_new_llm_connector(
             config,
             user_settings,
             pool,
+            // notification_emitter,
         )),
         LLMConnectorType::LLMrs => Box::new(llmrs::LLMrsConnector::new(
+                id,
             uuid,
             data_path,
             config,
             model_path.unwrap(),
             user_settings,
             pool,
+            notification_emitter,
         )),
     }
 }

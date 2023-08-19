@@ -6,6 +6,7 @@ use crate::database;
 use crate::database_types::*;
 use crate::error::PantryError;
 use crate::frontend;
+use tauri::AppHandle;
 
 use crate::state;
 use crate::user;
@@ -285,6 +286,7 @@ impl LLMActivated {
         data_path: PathBuf,
         user_settings: state::UserSettings,
         pool: Pool<ConnectionManager<SqliteConnection>>,
+        app: AppHandle,
     ) -> Result<LLMActivated, PantryError> {
         match manager_addr
             .ask(llm_manager::CreateLLMActorMessage {
@@ -296,6 +298,7 @@ impl LLMActivated {
                 model_path: llm.model_path.0.clone(),
                 user_settings,
                 pool: pool.clone(),
+                app,
             })
             .await
         {

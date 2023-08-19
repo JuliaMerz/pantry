@@ -266,9 +266,10 @@ async fn register_user(
         Err(err) => {
             println!("Error creating user: {:?}", err.to_string());
             Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Error creating user".into(),
-        ))},
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Error creating user".into(),
+            ))
+        }
     }
 }
 
@@ -456,37 +457,26 @@ async fn request_status(
     state: State<state::GlobalStateWrapper>,
     Json(payload): Json<RequestStatusRequest>,
 ) -> Result<Json<UserRequestStatus>, (StatusCode, String)> {
-
     let user_uuid =
         Uuid::parse_str(&payload.user_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
-    let request_uuid =
-        Uuid::parse_str(&payload.request_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
-    let user = user_permission_check(
-        "",
-        payload.api_key.clone(),
-        user_uuid,
-        state.pool.clone(),
-    )?;
+    let request_uuid = Uuid::parse_str(&payload.request_id)
+        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    let user = user_permission_check("", payload.api_key.clone(), user_uuid, state.pool.clone())?;
 
     let req = database::get_request(request_uuid, state.pool.clone()).map_err(|err| {
         println!("didn't find {:?}", request_uuid);
-        (
-            StatusCode::NOT_FOUND,
-            "Request Not Found".into(),
-        )
+        (StatusCode::NOT_FOUND, "Request Not Found".into())
     })?;
     if user_uuid != req.user_id.0 {
-        println!("uuid didn't match find {:?} vs {:?}", user_uuid, req.user_id.0);
-        return Err( (
-            StatusCode::NOT_FOUND,
-            "Request Not Found".into(),
-        ))
+        println!(
+            "uuid didn't match find {:?} vs {:?}",
+            user_uuid, req.user_id.0
+        );
+        return Err((StatusCode::NOT_FOUND, "Request Not Found".into()));
     }
 
     Ok(Json((&req).into()))
 }
-
-
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 struct RequestLoadFlexRequest {
@@ -512,10 +502,10 @@ async fn request_load_flex(
         state.pool.clone(),
     )?;
 
-    let mut llms = database::get_available_llms(state.pool.clone())
-        .map_err(|err| {
+    let mut llms = database::get_available_llms(state.pool.clone()).map_err(|err| {
         println!("failed to save to database because... {:?}", err);
-            (StatusCode::INTERNAL_SERVER_ERROR, "Database Error".into())})?;
+        (StatusCode::INTERNAL_SERVER_ERROR, "Database Error".into())
+    })?;
     // let mut llms: Vec<Uuid> = state
     //     .activated_llms
     //     .iter()
@@ -698,10 +688,10 @@ async fn get_llm_status(
     let llm_id =
         Uuid::parse_str(&payload.llm_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     let user = user_permission_check("view_llms", payload.api_key, user_uuid, state.pool.clone())?;
-    let llm = database::get_llm(llm_id, state.pool.clone())
-        .map_err(|err| {
-            println!("Failed to database: {:?}", err.to_string());
-            (StatusCode::INTERNAL_SERVER_ERROR, "Database Error".into())})?;
+    let llm = database::get_llm(llm_id, state.pool.clone()).map_err(|err| {
+        println!("Failed to database: {:?}", err.to_string());
+        (StatusCode::INTERNAL_SERVER_ERROR, "Database Error".into())
+    })?;
 
     Ok(Json((&llm).into()))
 }
@@ -721,10 +711,10 @@ async fn get_available_llms(
     let user_uuid =
         Uuid::parse_str(&payload.user_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     let user = user_permission_check("view_llms", payload.api_key, user_uuid, state.pool.clone())?;
-    let llms = database::get_available_llms(state.pool.clone())
-        .map_err(|err| {
-            println!("Failed to database: {:?}", err.to_string());
-            (StatusCode::INTERNAL_SERVER_ERROR, "Database Error".into())})?;
+    let llms = database::get_available_llms(state.pool.clone()).map_err(|err| {
+        println!("Failed to database: {:?}", err.to_string());
+        (StatusCode::INTERNAL_SERVER_ERROR, "Database Error".into())
+    })?;
 
     Ok(Json(llms.iter().map(|val| (val).into()).collect()))
 }
@@ -772,12 +762,7 @@ async fn interrupt_session(
         Uuid::parse_str(&payload.llm_uuid).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     let session_id = Uuid::parse_str(&payload.session_id)
         .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
-    let user = user_permission_check(
-        "session",
-        payload.api_key,
-        user_uuid,
-        state.pool.clone(),
-    )?;
+    let user = user_permission_check("session", payload.api_key, user_uuid, state.pool.clone())?;
     let llm = state
         .activated_llms
         .get(&llm_id)
@@ -798,7 +783,14 @@ async fn llm_loading_assistant(
 ) -> Result<Json<LLMRunningStatus>, (StatusCode, String)> {
     println!("Called llm_loading_assistant from API.");
     if state.activated_llms.contains_key(&new_llm.uuid) {
-        return Ok(Json(state.activated_llms.get(&new_llm.uuid).unwrap().value().into()))
+        return Ok(Json(
+            state
+                .activated_llms
+                .get(&new_llm.uuid)
+                .unwrap()
+                .value()
+                .into(),
+        ));
         // return Err((StatusCode::OK, "LLM Already Activated".into()));
     }
 
@@ -812,6 +804,7 @@ async fn llm_loading_assistant(
         path,
         settings,
         state.pool.clone(),
+        state.handle.clone(),
     )
     .await;
     // new_llm.load();
@@ -845,17 +838,19 @@ async fn load_llm(
 
     let _user = user_permission_check("load_llm", payload.api_key, user_uuid, state.pool.clone())?;
 
-    let count = database::count_llm_by_pub_id(payload.llm_id.clone(), state.pool.clone())
-        .map_err(|err| {
+    let count = database::count_llm_by_pub_id(payload.llm_id.clone(), state.pool.clone()).map_err(
+        |err| {
             println!("Failed to database: {:?}", err.to_string());
-            (StatusCode::INTERNAL_SERVER_ERROR, "Database Error".into())})?;
+            (StatusCode::INTERNAL_SERVER_ERROR, "Database Error".into())
+        },
+    )?;
 
     let new_llm: LLM;
     if count == 1 {
-        new_llm = database::get_llm_pub_id(payload.llm_id, state.pool.clone())
-            .map_err(|err| {
-                println!("Failed to database: {:?}", err.to_string());
-                (StatusCode::INTERNAL_SERVER_ERROR, "Database Error".into())})?;
+        new_llm = database::get_llm_pub_id(payload.llm_id, state.pool.clone()).map_err(|err| {
+            println!("Failed to database: {:?}", err.to_string());
+            (StatusCode::INTERNAL_SERVER_ERROR, "Database Error".into())
+        })?;
     } else {
         let llm_uuid = Uuid::parse_str(&payload.llm_id)
             .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
@@ -886,10 +881,10 @@ async fn load_llm_flex(
         Uuid::parse_str(&payload.user_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     let user = user_permission_check("load_llm", payload.api_key, user_uuid, state.pool.clone())?;
     // We should use currently running LLMs.
-    let mut llms = database::get_available_llms(state.pool.clone())
-        .map_err(|err| {
-            println!("Failed to database: {:?}", err.to_string());
-            (StatusCode::INTERNAL_SERVER_ERROR, "Database Error".into())})?;
+    let mut llms = database::get_available_llms(state.pool.clone()).map_err(|err| {
+        println!("Failed to database: {:?}", err.to_string());
+        (StatusCode::INTERNAL_SERVER_ERROR, "Database Error".into())
+    })?;
     // let mut llms: Vec<Uuid> = state
     //     .activated_llms
     //     .iter()
@@ -1519,7 +1514,6 @@ struct BareModelFlexRequest {
 struct BareModelResponse {
     model: LLMStatus,
     path: String,
-
 }
 async fn bare_model_flex(
     state: State<state::GlobalStateWrapper>,
@@ -1529,12 +1523,15 @@ async fn bare_model_flex(
     let user_uuid =
         Uuid::parse_str(&payload.user_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     let user = user_permission_check("bare_model", payload.api_key, user_uuid, state.pool.clone())?;
-    let mut llms = database::get_available_llms(state.pool.clone())
-        .map_err(|err| {
-            println!("Failed to database: {:?}", err.to_string());
-            (StatusCode::INTERNAL_SERVER_ERROR, "Database Error".into())})?;
+    let mut llms = database::get_available_llms(state.pool.clone()).map_err(|err| {
+        println!("Failed to database: {:?}", err.to_string());
+        (StatusCode::INTERNAL_SERVER_ERROR, "Database Error".into())
+    })?;
 
-    llms = llms.into_iter().filter(|llm| llm.model_path.is_some()).collect();
+    llms = llms
+        .into_iter()
+        .filter(|llm| llm.model_path.is_some())
+        .collect();
     // let mut llms: Vec<Uuid> = state
     //     .activated_llms
     //     .iter()
@@ -1598,9 +1595,14 @@ async fn bare_model_flex(
         let llm = llms.pop().unwrap();
         let resp = BareModelResponse {
             model: (&llm).into(),
-            path: llm.model_path.0.clone().unwrap().into_os_string().into_string().map_err(|osstr|
-                (StatusCode::INTERNAL_SERVER_ERROR, "Path Error".into())
-            )?
+            path: llm
+                .model_path
+                .0
+                .clone()
+                .unwrap()
+                .into_os_string()
+                .into_string()
+                .map_err(|osstr| (StatusCode::INTERNAL_SERVER_ERROR, "Path Error".into()))?,
         };
         return Ok(Json(resp));
     }
@@ -1610,28 +1612,41 @@ async fn bare_model_flex(
         // uuid is a singular preference. if we find it, we go.
         if let Some(uuid_pref) = preference.llm_uuid {
             if let Some(found) = llms.iter().find(|llm| llm.uuid.0 == uuid_pref) {
-        let llm = llms.pop().unwrap();
-        let resp = BareModelResponse {
-            model: (&llm).into(),
-            path: llm.model_path.0.unwrap().into_os_string().into_string().map_err(|osstr|
-                (StatusCode::INTERNAL_SERVER_ERROR, "Path Error".into())
-            )?
-        };
-        return Ok(Json(resp));
+                let llm = llms.pop().unwrap();
+                let resp = BareModelResponse {
+                    model: (&llm).into(),
+                    path: llm
+                        .model_path
+                        .0
+                        .unwrap()
+                        .into_os_string()
+                        .into_string()
+                        .map_err(|osstr| {
+                            (StatusCode::INTERNAL_SERVER_ERROR, "Path Error".into())
+                        })?,
+                };
+                return Ok(Json(resp));
             }
         }
 
         // id is a singular preference. if we find it, we go.
         if let Some(id_pref) = preference.llm_id {
             if let Some(found) = llms.iter().find(|llm| llm.id == id_pref) {
-        let llm = llms.pop().unwrap();
-        let resp = BareModelResponse {
-            model: (&llm).into(),
-            path: llm.model_path.0.clone().unwrap().into_os_string().into_string().map_err(|osstr|
-                (StatusCode::INTERNAL_SERVER_ERROR, "Path Error".into())
-            )?
-        };
-        return Ok(Json(resp));
+                let llm = llms.pop().unwrap();
+                let resp = BareModelResponse {
+                    model: (&llm).into(),
+                    path: llm
+                        .model_path
+                        .0
+                        .clone()
+                        .unwrap()
+                        .into_os_string()
+                        .into_string()
+                        .map_err(|osstr| {
+                            (StatusCode::INTERNAL_SERVER_ERROR, "Path Error".into())
+                        })?,
+                };
+                return Ok(Json(resp));
             }
         }
 
@@ -1681,14 +1696,19 @@ async fn bare_model_flex(
             "Failure in sorting code, please contact support".into(),
         ));
     }
-        let llm = llms.pop().unwrap();
-        let resp = BareModelResponse {
-            model: (&llm).into(),
-            path: llm.model_path.0.clone().unwrap().into_os_string().into_string().map_err(|osstr|
-                (StatusCode::INTERNAL_SERVER_ERROR, "Path Error".into())
-            )?
-        };
-        return Ok(Json(resp));
+    let llm = llms.pop().unwrap();
+    let resp = BareModelResponse {
+        model: (&llm).into(),
+        path: llm
+            .model_path
+            .0
+            .clone()
+            .unwrap()
+            .into_os_string()
+            .into_string()
+            .map_err(|osstr| (StatusCode::INTERNAL_SERVER_ERROR, "Path Error".into()))?,
+    };
+    return Ok(Json(resp));
 
     // let user = state
     //     .registered_users
@@ -1714,20 +1734,24 @@ async fn bare_model(
 
     let llm_uuid =
         Uuid::parse_str(&payload.llm_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
-    let _user = user_permission_check("bare_model", payload.api_key, user_uuid, state.pool.clone())?;
+    let _user =
+        user_permission_check("bare_model", payload.api_key, user_uuid, state.pool.clone())?;
 
-    let llm = database::get_llm(llm_uuid, state.pool.clone()).map_err(|err|
-            (StatusCode::NOT_FOUND, "Unable to find LLM".into())
-    )?;
+    let llm = database::get_llm(llm_uuid, state.pool.clone())
+        .map_err(|err| (StatusCode::NOT_FOUND, "Unable to find LLM".into()))?;
     let resp = BareModelResponse {
         model: (&llm).into(),
-            path: llm.model_path.0.clone().unwrap().into_os_string().into_string().map_err(|osstr|
-                (StatusCode::INTERNAL_SERVER_ERROR, "Path Error".into())
-            )?
+        path: llm
+            .model_path
+            .0
+            .clone()
+            .unwrap()
+            .into_os_string()
+            .into_string()
+            .map_err(|osstr| (StatusCode::INTERNAL_SERVER_ERROR, "Path Error".into()))?,
     };
-    return Ok(Json(resp))
+    return Ok(Json(resp));
 }
-
 
 pub async fn build_server(
     global_state: state::GlobalStateWrapper,

@@ -1,6 +1,7 @@
 use crate::connectors::{LLMEvent, LLMEventInternal, LLMInternalWrapper};
 use crate::database;
 use crate::database_types::*;
+use crate::emitter;
 use crate::llm::{LLMHistoryItem, LLMSession};
 use crate::state;
 use crate::user::User;
@@ -49,25 +50,30 @@ pub struct LLMrsConnector {
     model: RwLock<Option<Box<dyn llm::Model>>>,
     loaded_sessions: DashMap<Uuid, LLMrsSession>,
     data_path: PathBuf,
+    id: String, //we use this for better debug displays
     uuid: Uuid,
     user_settings: state::UserSettings,
     pool: Pool<ConnectionManager<SqliteConnection>>,
+    notification_emitter: emitter::NotificationEmitter,
 }
 
 impl LLMrsConnector {
     pub fn new(
+        id: String,
         uuid: Uuid,
         data_path: PathBuf,
         config: HashMap<String, Value>,
         model_path: PathBuf,
         user_settings: state::UserSettings,
         pool: Pool<ConnectionManager<SqliteConnection>>,
+        notification_emitter: emitter::NotificationEmitter,
     ) -> LLMrsConnector {
         let mut path = data_path.clone();
         path.push(format!("llmrs-{}", uuid.to_string()));
         fs::create_dir_all(path.clone());
         let mut conn = LLMrsConnector {
             config,
+            id,
             uuid,
             data_path: path,
             model_path,
@@ -75,11 +81,16 @@ impl LLMrsConnector {
             loaded_sessions: DashMap::new(),
             user_settings,
             pool,
+            notification_emitter,
         };
         conn
     }
 
     fn rehydrate_session(&self, llm_sess: LLMSession) -> Result<Uuid, String> {
+        self.notification_emitter.send_notification(
+            self.uuid.to_string(),
+            format!("Rehydrating session for {}", self.id.to_string()),
+        );
         println!("Rehyrdatring session {:?}", llm_sess.id);
         let mut path = self.data_path.clone();
         path.push(llm_sess.id.0.to_string());
@@ -116,6 +127,13 @@ impl LLMrsConnector {
     fn dehydrate_session(&self, llmrs_sess: LLMrsSession) -> Result<(), String> {
         let mut raw = llmrs_sess.model_session.lock().unwrap();
         println!("dehydrating session");
+        self.notification_emitter.send_notification(
+            self.uuid.to_string(),
+            format!(
+                "Maintenance: Dehydrating session for {}",
+                self.id.to_string()
+            ),
+        );
 
         // Safety: you can't use the model while get_snapshot is alive
         // The lock above us ensures this, and we're going to drop the model after anyway
@@ -241,6 +259,10 @@ impl LLMInternalWrapper for LLMrsConnector {
         params: HashMap<String, Value>,
         user: User,
     ) -> Result<Uuid, String> {
+        self.notification_emitter.send_notification(
+            self.uuid.to_string(),
+            format!("Creating session for {}", self.id.to_string()),
+        );
         let mut model_read = self
             .model
             .write()
@@ -325,9 +347,11 @@ impl LLMInternalWrapper for LLMrsConnector {
             }
         }
 
+        let mut stop_sequence = None;
         let mut processed_prompt = prompt;
         if let Some(Value::String(s)) = params.get("pre_prompt") {
             if let pre_prompt = s {
+                stop_sequence = Some(pre_prompt.clone());
                 processed_prompt = pre_prompt.to_owned() + &processed_prompt;
             }
         }
@@ -337,9 +361,6 @@ impl LLMInternalWrapper for LLMrsConnector {
                 processed_prompt = processed_prompt + post_prompt;
             }
         }
-
-
-
 
         let _inf_params = llm::InferenceParameters {
             n_threads: self.user_settings.n_thread,
@@ -380,6 +401,12 @@ impl LLMInternalWrapper for LLMrsConnector {
         let new_item = database::save_new_llm_history(new_item, self.pool.clone())
             .map_err(|err| format!("Database failure: {:?}", err))?;
 
+        let mut stop_sequence_buf = String::new();
+
+        self.notification_emitter.send_notification(
+            self.uuid.to_string(),
+            format!("Beginning inference for {}", self.id.to_string()),
+        );
         println!("Attempting to infer");
         // Call the llm
         model_armed
@@ -402,6 +429,32 @@ impl LLMInternalWrapper for LLMrsConnector {
                 |r| match r {
                     llm::InferenceResponse::InferredToken(t) => {
                         print!("{t}");
+
+                        self.notification_emitter.send_notification(
+                            self.uuid.to_string(),
+                            format!("{}: Inferred '{}'", self.id.to_string(), t.clone()),
+                        );
+                        let mut cancel = false;
+
+                        if let Some(stop_seq) = stop_sequence.clone() {
+                            let mut buf = stop_sequence_buf.clone();
+                            buf.push_str(&t);
+                            if buf.starts_with(&stop_seq) {
+                                // We've generated the stop sequence, so we're done.
+                                // Note that this will contain the extra tokens that were generated after the stop sequence,
+                                // which may affect generation. This is non-ideal, but it's the best we can do without
+                                // modifying the model.
+                                stop_sequence_buf.clear();
+                                cancel = true;
+                            } else if stop_seq.starts_with(&buf) {
+                                // We've generated a prefix of the stop sequence, so we need to keep buffering.
+                                stop_sequence_buf = buf;
+                            }
+
+                            // We've generated a token that isn't part of the stop sequence, so we can
+                            // pass it to the callback.
+                            stop_sequence_buf.clear();
+                        }
 
                         let session_clone = llm_session_armed.clone();
 
@@ -433,7 +486,9 @@ impl LLMInternalWrapper for LLMrsConnector {
                             }
                             println!("Sent an event from llmrs for {:?}", print_clone);
                         });
-                        let cancel = cancellation.is_cancelled();
+                        if cancellation.is_cancelled() {
+                            cancel = true;
+                        }
 
                         let update_item =
                             database::append_token(update_item, t, cancel, self.pool.clone())

@@ -71,7 +71,7 @@ interface OngoingNotification {
   lastId: number,
   progress?: number | string,
   description: string,
-  type: "error" | "download" | "inference"
+  type: "error" | "download" | "inference" | "notification"
   timeout: number,
 }
 
@@ -110,7 +110,7 @@ function App() {
           let new_error: OngoingNotification = {
             lastId: msgId,
             description: error,
-            type: "download",
+            type: "error",
             timeout: Date.now() + 3000
           }
 
@@ -182,6 +182,7 @@ function App() {
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
+    let unlisten2: (() => void) | undefined;
 
     setInterval(() => {
       setOngoingNotifications((prev) => {
@@ -220,6 +221,37 @@ function App() {
               description: "Downloading LLM ",
               type: "download",
               timeout: Date.now() + 3000
+            };
+            return {...prev}
+          });
+        }
+
+      });
+    })();
+
+    (async () => {
+      unlisten = await listen('notification', (event: any) => {
+        const msgId = Math.random();
+        console.log("CAUGHT NOTIFICATION", event);
+        const streamId = event.payload.stream_id;
+        if (streamId in refNotifications.current) {
+          setOngoingNotifications((prev) => {
+            if (prev[streamId]) {
+              prev[streamId].lastId = msgId;
+              prev[streamId].description = event.payload.event.message;
+              prev[streamId].timeout = Date.now() + 6000;
+            } else {
+            }
+            return {...prev};
+
+          });
+        } else {
+          setOngoingNotifications((prev) => {
+            prev[streamId] = {
+              lastId: msgId,
+              description: event.payload.event.message,
+              type: "notification",
+              timeout: Date.now() + 6000
             };
             return {...prev}
           });
@@ -324,7 +356,7 @@ function App() {
                     background: "background.main",
                     paddingY: 0.5,
                   }} key={streamId}>
-                    <Typography sx={{
+                    <Typography color={(ongoingNotifications[streamId].type == "error" ? "error.main" : "text.primary")} sx={{
                       marginRight: 2,
                     }}>{ongoingNotifications[streamId].description}</Typography>
                     {ongoingNotifications[streamId].progress ? <LinearProgress sx={{

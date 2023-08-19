@@ -1,7 +1,9 @@
 use crate::connectors::llm_actor::{LLMActor, PreUnloadMessage};
 use crate::connectors::SysEvent;
+use crate::emitter;
 use crate::state;
 use crate::{connectors, error::PantryError};
+use tauri::AppHandle;
 
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool};
@@ -49,6 +51,7 @@ pub struct CreateLLMActorMessage {
     pub model_path: Option<PathBuf>,
     pub user_settings: state::UserSettings,
     pub pool: Pool<ConnectionManager<SqliteConnection>>,
+    pub app: AppHandle,
 }
 // id, connector type, config[]
 
@@ -68,12 +71,16 @@ impl Handler<SysEvent, CreateLLMActorMessage> for LLMManagerActor {
         let conn: connectors::LLMConnectorType = msg.connector.clone();
         let connection = connectors::get_new_llm_connector(
             conn.clone(),
+            msg.id.clone(),
             msg.uuid.clone(),
             msg.data_path.clone(),
             msg.config.clone(),
             msg.model_path.clone(),
             msg.user_settings.clone(),
             msg.pool.clone(),
+            emitter::NotificationEmitter {
+                app: msg.app.clone(),
+            },
         );
         let llm_act = LLMActor {
             loaded: false, //LLM actors need to have init called on them

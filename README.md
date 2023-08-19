@@ -1,8 +1,10 @@
 # Pantry
 
 Pantry is like homebrew for LLMs. It combines an LLM repository, a local LLM runner,
-and a language agnostic integration API. So you can play with  or integrate LLMs
+and a language agnostic integration API. So you can play with or integrate LLMs
 without managing the underlying models.
+
+It's also, literally, the easiest way to download and run any GGML compatible LLM.
 
 ## Getting Started
 
@@ -15,6 +17,8 @@ harder than it needed to be.
 
 I wanted to build my project to be LLM agnostic, especially for users or organizations
 who wanted to insert their own fine-tuned LLMs into the project.
+
+So I built this first.
 
 ## Usage
 
@@ -89,15 +93,3 @@ since it would allow the "capabilities" field to be based on more than just "vib
 I'd love to have proper regression testing and automated CI. I just haven't had
 the time to do it.
 
-## Licence/Money stuff
-This project itself is bundled under LGPL. You're free to bundle it into your
-software, but if you integrate it into your code, your software must also be LGPL. What
-that means is you're free to distribute the client with your own software (ie, to
-use it to download and run LLMs), but if you want to use it as the basis for a new
-client, that client must also be LGPL.
-
-The offline client is open source and free forever. Any features added to it will be
-free forever as well. I have some ideas for "teams" features for developers and
-larger organizations. Those, by their nature, will require a web infrastructure
-for management, customer support, etc etc. As a result those features will
-almost certainly cost money.
