@@ -33,6 +33,33 @@ set of LLMs based on the ggml project.
 Pantry exposes an API via http-over-socket or localhost, at `/tmp/pantrylocal.sock`
 or at port 9404. Some (one) native APIs wrapping those access points also exist.
 
+Running native code is extremely simple, here's an example from the rust API:
+``` rust
+let perms = UserPermissions {
+    perm_superuser: false,
+    perm_load_llm: true,
+    perm_unload_llm: true,
+    perm_download_llm: false,
+    perm_session: true,
+    perm_request_download: true,
+    perm_request_load: true,
+    perm_request_unload: true,
+    perm_view_llms: true,
+};
+
+let pantry = PantryClient::register("project_name".into(), perms).await.unwrap();
+
+
+// Pause here and use the UI to accept the permission request.
+
+// Use this if you want your code to load an LLM first.
+// pantry.load_llm_flex(None, None).await.unwrap();
+
+let sess = pantry.create_session(HashMap::new()).await.unwrap();
+
+let recv = ses.prompt_session("About me: ".into(), HashMap::new()).await.unwrap();
+```
+
 - **Web** — Look up the API docs at [docs.rs](https://docs.rs/pantry-rs/latest/pantry_rs/api/struct.PantryAPI.html). Proper API docs coming soon.
 - **Rust** — [JuliaMerz/pantry-rs](https://github.com/JuliaMerz/pantry-rs)
 
