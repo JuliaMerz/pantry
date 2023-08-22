@@ -4,7 +4,7 @@ import {produceEmptyRegistryEntry, fromLLMRegistryEntry} from "./interfaces";
 import {invoke} from '@tauri-apps/api/tauri';
 
 const LLM_INFO_SOURCE = "https://raw.githubusercontent.com/JuliaMerz/pantry/master/models/index.json";
-const REGISTRIES_STORAGE_KEY = "registries20";
+const REGISTRIES_STORAGE_KEY = "registries23";
 
 const store = new Store(".local.dat");
 
@@ -13,7 +13,6 @@ export async function getRegistries(forceRemoteRefresh: boolean): Promise<LLMReg
     then(async (registries: any) => {
       // This means we don't ahve any registries stored. Start with default.
       if (!registries) {
-        console.log("Didn't find registries, adding");
         // would do setRegistries([]) but it's the default
         const local: LLMRegistry = {
           id: "local",
@@ -37,46 +36,38 @@ export async function getRegistries(forceRemoteRefresh: boolean): Promise<LLMReg
         return getRegistries(false);
       } else {
         let regs = registries as LLMRegistryRegistry;
-        console.log("Found registries, returning");
 
         // If force refresh, we want to redownload all models
         if (forceRemoteRefresh) {
-          console.log("registries:", registries);
-          console.log("Updating store registries");
-          await store.set(REGISTRIES_STORAGE_KEY, regs);
-          await store.save();
 
-          for (let url in Object.keys(regs)) {
+          for (let url in regs) {
             if (url === 'local' || url === 'shared') {
               continue;
             }
-            fetch(url).then((response) => {
-              console.log(response);
-              const remoteData = (response as any).data as any;
-              const models = remoteData.models as {[id: string]: LLMRegistryEntry};
-              console.log("models:", models);
+            let response = await fetch(url);
+            const remoteData = await response.json() as any;
+            const models = remoteData.models as {[id: string]: LLMRegistryEntry};
 
-              // Convert each model to an LLMRegistryEntry and add it to the registryEntries array
-              // FOR BACKEND MODELS WE ASSUME UNIQUE IDs. THIS DOES NOT HOLD TRUE FOR LOCAL/SHARED
-              // this makes sense when you consider that backend comes from one service
-              // whereas local/shared comes from many people
-              Object.entries(models).forEach(([key, model], index) => {
-                console.log("pushign a model");
-                const registryEntry: LLMRegistryEntry = toLLMRegistryEntryExternal(model);
-                regs[url].models[key] = registryEntry;
-              });
-
-            }).catch((reason) => {
-              console.log("error fetching, skipping");
+            // Convert each model to an LLMRegistryEntry and add it to the registryEntries array
+            // FOR BACKEND MODELS WE ASSUME UNIQUE IDs. THIS DOES NOT HOLD TRUE FOR LOCAL/SHARED
+            // this makes sense when you consider that backend comes from one service
+            // whereas local/shared comes from many people
+            Object.entries(models).forEach(([key, model], index) => {
+              const registryEntry: LLMRegistryEntry = toLLMRegistryEntryExternal(model);
+              regs[url].models[key] = registryEntry;
             });
+
           }
+          await store.set(REGISTRIES_STORAGE_KEY, regs);
+          await store.save();
 
         }
+
+        console.log("Returned registries", regs);
 
         return regs;
       }
     }).catch(async (err: any) => {
-      console.log("Didn't find registries, adding");
       // would do setRegistries([]) but it's the default
       const local: LLMRegistry = {
         id: "local",
@@ -106,7 +97,6 @@ export async function getRegistries(forceRemoteRefresh: boolean): Promise<LLMReg
 export const validateRegistryEntry = (entry: LLMRegistryEntry) => {
   let errors: {[key: string]: string} = {};
 
-  console.log("beep", entry);
   if (entry.name.trim() === '') {
     errors.name = 'Name is required.';
   }
@@ -135,21 +125,17 @@ export async function addRegistry(id: string, url: string): Promise<LLMRegistryR
     url: url,
     models: {},
   };
-  console.log("Running add registry");
 
   // Fetch data from the new URL and extract models
   const response = await fetch(url);
-  console.log(response);
-  const remoteData = (response as any).data as any;
-  const models = remoteData.models as LLMRegistryEntry[];
-  console.log("models:", models);
+  const remoteData = await response.json() as any;
+  const models = remoteData.models as {[key: string]: LLMRegistryEntry};
 
 
   // Convert each model to an LLMRegistryEntry and add it to the registryEntries array
-  for (const model of models) {
-    console.log("pushign a model");
-    const registryEntry: LLMRegistryEntry = await toLLMRegistryEntryExternal(model);
-    newReg.models[registryEntry.id] = registryEntry;
+  for (const id in models) {
+    const registryEntry: LLMRegistryEntry = toLLMRegistryEntryExternal(models[id]);
+    newReg.models[id] = registryEntry;
   }
 
 
@@ -175,7 +161,6 @@ export async function addRegistry(id: string, url: string): Promise<LLMRegistryR
 
 export async function addRegistryEntry(model: LLMRegistryEntry, location: string): Promise<string> {
   let regs = await getRegistries(false);
-  console.log("looking in", location, regs);
   if (model.id in regs[location].models) {
     let counter = 1
     while (model.id + '-' + counter in regs[location].models) {
@@ -184,7 +169,6 @@ export async function addRegistryEntry(model: LLMRegistryEntry, location: string
     model.id = model.id + '-' + counter;
   }
 
-  console.log("Final model id: ", model.id);
   regs[location].models[model.id] = model
   await store.set(REGISTRIES_STORAGE_KEY, regs);
   await store.save();
@@ -227,16 +211,13 @@ export async function deleteRegistryEntry(llm: LLMRegistryEntry, registry: LLMRe
 }
 
 export async function regSetDownloaded(llms: LLMRegistryEntry[]) {
-  console.log("Running!");
   let ids = llms.map((llm) => llm.backendUuid);
   let regs = await getRegistries(false);
 
   for (const [url, reg] of Object.entries(regs)) {
     for (const [key, ent] of Object.entries(reg.models)) {
-      console.log("trying", ids, ent)
       if (ids.includes(ent.backendUuid)) {
         ent.downloadState = LLMDownloadState.Downloaded;
-        console.log("updating!");
       }
     }
   }

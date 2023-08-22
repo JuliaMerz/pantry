@@ -157,8 +157,6 @@ function DownloadableLLMs() {
       const llmAvail = result.data.map(toLLMAvailable);
       setAvailableLLMs(llmAvail);
 
-      console.log("result", result);
-      console.log("llmavail", llmAvail);
       let allRemovedModels: LLMRegistryEntry[] = []
       for (let regKey of Object.keys(regs)) {
         console.log("reg key {}, regs  models {}", regKey, regs[regKey], llmAvail)

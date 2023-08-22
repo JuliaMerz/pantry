@@ -35,7 +35,7 @@ const LLMDownloadableInfo: React.FC<LLMDownloadableInfoProps> = ({llm, registry,
   const [downloadError, setDownloadError] = useState(false);
   const [openDelete, setOpenDelete] = useState(false);
   const downloadClick = async () => {
-    console.log("sending off the llm reg", llm);
+    console.log("downloading llm reg", llm);
 
 
     setDownloadError(false);
@@ -79,7 +79,6 @@ const LLMDownloadableInfo: React.FC<LLMDownloadableInfoProps> = ({llm, registry,
     errorCheck(downloadProgress);
 
     (async () => {
-      console.log("registering listener", llm.backendUuid);
       unlisten = await listen('downloads', (event: any) => {
         if (event.payload.stream_id !== llm.id + '-' + llm.backendUuid)
           return
@@ -109,7 +108,6 @@ const LLMDownloadableInfo: React.FC<LLMDownloadableInfoProps> = ({llm, registry,
     })();
 
     return () => {
-      console.log("UNREGISTERING LISTENER OR TRYING TO", unlisten)
       unlisten && unlisten();
     }
   }, [llm.backendUuid]);

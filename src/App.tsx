@@ -119,7 +119,6 @@ function App() {
         })
         setTimeout(() => {
           setOngoingNotifications((prev) => {
-            console.log('del', prev);
             const {[msgId]: _, ...without} = prev;
             return without;
           });
@@ -140,7 +139,7 @@ function App() {
     return (
       <MenuItem value={value2}>
         <ListItemButton component={LinkRef} to={to}
-          onClick={(e) => {console.log('wutut'); handleSelectChange(e, value2)}}>
+          onClick={(e) => handleSelectChange(e, value2)}>
           <ListItemText primary={primary} />
         </ListItemButton>
       </MenuItem>
@@ -148,12 +147,10 @@ function App() {
   }, []);
 
   const handleChange = useCallback((event: any, newValue: string) => {
-    console.log("whooo2", event, newValue);
     setLocation(newValue);
   }, []);
 
   const handleSelectChange = useCallback((event: any, newValue: string) => {
-    console.log("WHOOPS", event, newValue);
     setLocation(newValue);
     setLocationText(event.target.outerText);
   }, []);
@@ -168,7 +165,6 @@ function App() {
     setDownloadModalOpen(false);
     try {
       await addRegistryEntry(downloadRegistryEntry, 'shared');
-      console.log("current registry id:", downloadRegistryEntry);
       await downloadLLM(downloadRegistryEntry, 'shared');
     } catch (error: any) {
       errorHandler.sendError(error.toString());
@@ -232,7 +228,6 @@ function App() {
     (async () => {
       unlisten = await listen('notification', (event: any) => {
         const msgId = Math.random();
-        console.log("CAUGHT NOTIFICATION", event);
         const streamId = event.payload.stream_id;
         if (streamId in refNotifications.current) {
           setOngoingNotifications((prev) => {
@@ -269,7 +264,6 @@ function App() {
 
   const listenForDeepLink = () => {
     const unlisten_promise = listen<any>("deep-link-request", (raw_event) => {
-      console.log(raw_event)
       setLatestEvent(JSON.stringify(raw_event));
 
       let event: DeepLinkEvent = raw_event.payload as DeepLinkEvent;
@@ -280,7 +274,6 @@ function App() {
 
         let registryEntry = toLLMRegistryEntryExternal(base64ToJson(event.payload.base64));
 
-        console.log("Got registry entry", registryEntry);
 
         setDownloadRegistryEntry((current) => {
           return {...downloadRegistryEntry, ...registryEntry}

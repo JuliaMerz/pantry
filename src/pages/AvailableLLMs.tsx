@@ -21,9 +21,8 @@ function AvailableLLMs() {
   useEffect(() => {
     const fetchAvailableLLMs = async () => {
       try {
-        console.log("sending");
         const result: {data: LLMAvailable[]} = await invoke<{data: LLMAvailable[]}>('available_llms');
-        console.log("resultsss", result);
+        console.log("availble_llms", result);
         const res2: {data: LLMRunning[]} = await invoke('active_llms');
         setActiveLlms(res2.data.map(toLLMRunning));
         setAvailableLLMs(result.data.map(toLLMAvailable));

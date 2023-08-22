@@ -18,7 +18,7 @@ function Home() {
   };
   const fetchLLMs = async () => {
     const ret: {data: LLMRunning[]} = await rustGetLLMs();
-    console.log(ret.data);
+    console.log("running llms", ret.data);
     setActiveLlms(ret.data.map(toLLMRunning));
   };
 
