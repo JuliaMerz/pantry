@@ -393,14 +393,14 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
                             p: 1,
                             mb: 0.5,
                           }}>
-                            <Typography variant="body1">{item.input}</Typography>
+                            <Typography sx={{whiteSpace: 'pre-line'}} variant="body1">{item.input}</Typography>
                           </Paper>
                           <Typography variant="subtitle2">Output</Typography>
                           <Paper sx={{
 
                             p: 1,
                           }}>
-                            <Typography>{item.output}</Typography>
+                            <Typography sx={{whiteSpace: 'pre-line'}} >{item.output}</Typography>
                           </Paper>
                         </Box>
                         {session.items.length == 0 || session.items[session.items.length - 1].complete || index !== session.items.length - 1 ? (null) : (
