@@ -71,10 +71,8 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
   }, []);
 
   const fetchSessions = async () => {
-    console.log("llm.uuid", llm);
     const {data: pairs} = (await invoke('get_sessions', {llmUuid: llm.uuid}) as {data: [LLMSession, LLMHistoryItem[]][]});
     let sessions = pairs.map((pair) => toLLMSession(pair[0], pair[1]));
-    console.log("fetche sessions", sessions);
     sessions.map((val) => setCancellationStatus(prevStatus => ({...prevStatus, [val.id]: false})));
     sessions.map((val) => setCancellationSuccessful(prevStatus => ({...prevStatus, [val.id]: false})));
 
@@ -83,13 +81,11 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
 
   const listenForNewSessions = () => {
     const unlisten_promise = listen<any>("llm_response", (event) => {
-      console.log("heard event: ", event);
 
       //In doing this we skip channel close messages, but we don't subscribe to a singular channel so it's chilld
       if (!event.payload.event.type || event.payload.event.type !== "LLMResponse")
         return
       let payload: LLMEventPayload = toLLMEventPayload(event.payload.event);
-      console.log("processed event: ", payload);
       if (payload.llmUuid !== llm.uuid)
         return;
 
@@ -164,21 +160,17 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
           if (payload.timestamp > historyItem.updateTimestamp) {
             historyItem.updateTimestamp = payload.timestamp
             if (payload.event.type === "PromptProgress") {
-              console.log("adding next");
               historyItem.output = payload.event.previous + payload.event.next; // Assuming the output is in the previous field of the event
             }
             if (payload.event.type === "PromptCompletion") {
               historyItem.output = payload.event.previous; // Assuming the output is in the previous field of the event
-              console.log("completing");
               historyItem.complete = true;
             }
             session.items[historyItemIndex] = historyItem;
           } else {
-            console.log("timestamp skip");
           }
         }
 
-        console.log("setting out to", session.items[session.items.length - 1].output, payload, session);
         if (isNewSession) {
           return [...currentSessions, session];
         } else {
@@ -236,7 +228,6 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
 
   const handleSessionSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("attempting to call session");
     setCancellationStatus(prevStatus => ({...prevStatus, [selectedSessionId]: false}));
     setCancellationSuccessful(prevSuccess => ({...prevSuccess, [selectedSessionId]: false}));
     setJustSubmitted(true);

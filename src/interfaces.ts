@@ -129,14 +129,15 @@ function toLLMRegistryEntryExternal(remoteData: LLMRegistryEntry): LLMRegistryEn
       if (typeof entry[key] === 'string' && typeof remoteData[key] === 'string') {
         // If the key is not 'url', sanitize the value
         if (key !== 'url') {
-          (entry[key] as string) = (remoteData[key] as string).replace(/[^\w-. \/]/g, '');
+          (entry[key] as string) = (remoteData[key] as string).replace(/[^\w-. _\/]/g, '');
         } else {
           // validate url field
           entry[key] = sanitizeUrl(remoteData[key]);
         }
 
       } else if (entry[key] instanceof Array && remoteData[key] instanceof Array) {
-        (entry[key] as Array<string>) = (remoteData[key] as Array<string>).map((item: string) => item.replace(/[^\w-. \/]/g, ''));
+        // (entry[key] as Array<string>) = (remoteData[key] as Array<string>).map((item: string) => item.replace(/[^\w-. \/]/g, ''));
+        (entry[key] as Array<string>) = (remoteData[key] as Array<string>).map((item: string) => item);
 
       } else if (typeof entry[key] === 'object' && typeof remoteData[key] === 'object') {
         (entry[key] as object) = {};
@@ -152,7 +153,8 @@ function toLLMRegistryEntryExternal(remoteData: LLMRegistryEntry): LLMRegistryEn
           }
 
           if (typeof (remoteData[key] as {[key: string]: string})[subKey] === 'string') {
-            ((entry[key] as {[key: string]: string})[subKey] as string) = ((remoteData[key] as {[key: string]: string})[subKey] as string).replace(/[^\w-. \/]/g, '');
+            // ((entry[key] as {[key: string]: string})[subKey] as string) = ((remoteData[key] as {[key: string]: string})[subKey] as string).replace(/[^\w-. \/]/g, '');
+            ((entry[key] as {[key: string]: string})[subKey] as string) = ((remoteData[key] as {[key: string]: string})[subKey] as string);
           }
         }
       }
@@ -240,28 +242,28 @@ interface BaseUserRequest {
 }
 
 interface UserDownloadRequest extends BaseUserRequest {
-    type: UserRequestType.Download,
+  type: UserRequestType.Download,
   request: {
     llmRegistryEntry: LLMRegistryEntry,
   }
 }
 
 interface UserLoadRequest extends BaseUserRequest {
-    type: UserRequestType.Load,
+  type: UserRequestType.Load,
   request: {
     llmId: string,
   }
 }
 
 interface UserUnloadRequest extends BaseUserRequest {
-    type: UserRequestType.Unload,
+  type: UserRequestType.Unload,
   request: {
     llmId: string,
   }
 }
 
 interface UserPermissionRequest extends BaseUserRequest {
-    type: UserRequestType.Permission,
+  type: UserRequestType.Permission,
   request: {
     requestedPermissions: string,
   }
@@ -309,7 +311,6 @@ function toUserRequest(request: any): UserRequest {
     requester: request.requester || ''
   };
 
-  console.log("request2", request);
   switch (request.request.type) {
     case UserRequestType.Download:
       converted.type = UserRequestType.Download;

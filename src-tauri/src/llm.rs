@@ -365,7 +365,7 @@ impl LLMWrapper for LLMActivated {
             self.llm_id, user
         );
 
-        database::get_llm_sessions_user(user, self.pool.clone())
+        database::get_llm_sessions_user(user, self.llm.uuid.clone(), self.pool.clone())
             .map_err(|err| PantryError::DatabaseError(err))
     }
 

@@ -528,12 +528,15 @@ impl LLMInternalWrapper for LLMrsConnector {
 
                         Ok(llm::InferenceFeedback::Halt)
                     }
-                    _ => match cancellation.is_cancelled() {
-                        // TODO: mark complete here
-                        // TODO: mark complete final token whatever
-                        true => Ok(llm::InferenceFeedback::Halt),
-                        false => Ok(llm::InferenceFeedback::Continue),
-                    },
+                    _ => {
+                        println!("got other");
+                        match cancellation.is_cancelled() {
+                            // TODO: mark complete here
+                            // TODO: mark complete final token whatever
+                            true => Ok(llm::InferenceFeedback::Halt),
+                            false => Ok(llm::InferenceFeedback::Continue),
+                        }
+                    }
                 },
             )
             .map_err(|err| format!("failure to infer with {:?}", err))?;

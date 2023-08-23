@@ -49,9 +49,9 @@ export const universal: ThemeOptions = {
     MuiCard: {
       styleOverrides: {
         root: ({ownerState, theme}) => {
-            return theme.unstable_sx({
-              marginY: 1,
-            })
+          return theme.unstable_sx({
+            marginY: 1,
+          })
         },
       },
     },
@@ -157,8 +157,8 @@ const ModalBoxWrapper = styled(Box)(({theme}) => ({
   margin: 2,
 }));
 
-export const ModalBox: React.FC<ModalBoxProps> = ({children}) => {
-  return (<ModalBoxWrapper>{children}</ModalBoxWrapper>);
+export function ModalBox (props: {children: any}) {
+  return(<ModalBoxWrapper> {props.children}</ModalBoxWrapper >);
 };
 
 

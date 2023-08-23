@@ -63,7 +63,7 @@ export async function getRegistries(forceRemoteRefresh: boolean): Promise<LLMReg
 
         }
 
-        console.log("Returned registries", regs);
+        console.log("Returned registries", regs)
 
         return regs;
       }

@@ -4,8 +4,8 @@
 use crate::connectors::llm_manager;
 
 use dashmap::DashMap;
-use diesel::prelude::*;
 use diesel::connection::SimpleConnection;
+use diesel::prelude::*;
 use diesel::r2d2::ConnectionManager;
 use diesel::r2d2::Pool;
 use diesel::sqlite::Sqlite;
@@ -18,10 +18,10 @@ use tokio::sync::oneshot;
 use url::{ParseError, Url};
 use uuid::Uuid;
 
-use std::fs;
 use std::collections::HashMap;
 use std::env;
 use std::error::Error;
+use std::fs;
 
 use tauri::{
     CustomMenuItem, Manager, RunEvent, SystemTray, SystemTrayEvent, SystemTrayMenu, WindowEvent,
@@ -96,7 +96,6 @@ pub fn get_connection_pool(db_url: String) -> Pool<ConnectionManager<SqliteConne
         .build(manager)
         .expect("Could not build connection pool");
     pool
-
 }
 
 // pub fn establish_connection() -> SqliteConnection {
@@ -171,6 +170,9 @@ async fn main() {
         fs::create_dir_all(&llm_path).unwrap();
     }
 
+    if !db_path.exists() {
+        fs::create_dir_all(&llm_path).unwrap();
+    }
 
     let config = context.config().clone();
 

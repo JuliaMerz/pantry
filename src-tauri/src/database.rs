@@ -13,10 +13,10 @@ use std::fmt;
 use uuid::Uuid;
 
 use crate::database_types::*;
-use crate::user;
 use crate::llm::{LLMHistoryItem, LLMSession, LLM};
 use crate::request::UserRequest;
 use crate::schema;
+use crate::user;
 use crate::user::User;
 // ON db migration generation:
 // %s/Timestamp/TimestamptzSqlite/g
@@ -91,9 +91,7 @@ pub fn get_requests(
 ) -> Result<Vec<UserRequest>, diesel::result::Error> {
     let conn = &mut pool.get().unwrap();
     use schema::requests::dsl::*;
-    requests
-        .select(UserRequest::as_select())
-        .load(conn)
+    requests.select(UserRequest::as_select()).load(conn)
 }
 
 pub fn get_request(
@@ -256,12 +254,14 @@ pub fn save_new_user(
 
 pub fn get_llm_sessions_user(
     user: User,
+    llm_id: DbUuid,
     pool: Pool<ConnectionManager<SqliteConnection>>,
 ) -> Result<Vec<(LLMSession, Vec<LLMHistoryItem>)>, diesel::result::Error> {
     let conn = &mut pool.get().unwrap();
     use schema::llm_history::dsl as history_dsl;
     use schema::llm_session::dsl as session_dsl;
     let sessions = session_dsl::llm_session
+        .filter(session_dsl::llm_uuid.eq(llm_id))
         .filter(session_dsl::user_id.eq(user.id))
         .order(session_dsl::last_called.desc())
         .select(LLMSession::as_select())
@@ -310,8 +310,7 @@ pub fn mark_request_complete(
     use schema::requests::dsl;
     diesel::update(dsl::requests)
         .filter(dsl::id.eq(DbUuid(req_id)))
-        .set((dsl::accepted.eq(accepted),
-        dsl::complete.eq(true)))
+        .set((dsl::accepted.eq(accepted), dsl::complete.eq(true)))
         .execute(conn)
 }
 
@@ -325,20 +324,20 @@ pub fn update_permissions(
     println!("Updating to {:?}", perms);
     diesel::update(user)
         .filter(id.eq(DbUuid(user_id)))
-        .set((perm_superuser.eq(perms.perm_superuser),
-        perm_load_llm.eq(perms.perm_load_llm),
-        perm_unload_llm.eq(perms.perm_unload_llm),
-        perm_download_llm.eq(perms.perm_download_llm),
-        perm_session.eq(perms.perm_session),
-        perm_request_download.eq(perms.perm_request_download),
-        perm_request_load.eq(perms.perm_request_load),
-        perm_request_unload.eq(perms.perm_request_unload),
-        perm_view_llms.eq(perms.perm_view_llms),
-        perm_bare_model.eq(perms.perm_bare_model)))
+        .set((
+            perm_superuser.eq(perms.perm_superuser),
+            perm_load_llm.eq(perms.perm_load_llm),
+            perm_unload_llm.eq(perms.perm_unload_llm),
+            perm_download_llm.eq(perms.perm_download_llm),
+            perm_session.eq(perms.perm_session),
+            perm_request_download.eq(perms.perm_request_download),
+            perm_request_load.eq(perms.perm_request_load),
+            perm_request_unload.eq(perms.perm_request_unload),
+            perm_view_llms.eq(perms.perm_view_llms),
+            perm_bare_model.eq(perms.perm_bare_model),
+        ))
         .execute(conn)
 }
-
-
 
 // MAGIC SAUCE
 //
