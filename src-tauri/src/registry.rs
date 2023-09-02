@@ -1,16 +1,16 @@
-use std::collections::HashMap;
-use std::io::prelude::*;
-
 use crate::connectors;
-use std::path::PathBuf;
 use crate::database;
 use crate::database_types::*;
 use crate::emitter;
 use crate::llm;
 use crate::state;
 use futures_util::StreamExt;
+use log::{debug, error, info, warn, LevelFilter};
 use serde_json::Value;
+use std::collections::HashMap;
 use std::fs::File;
+use std::io::prelude::*;
+use std::path::PathBuf;
 use std::str::FromStr;
 use tauri::Manager;
 
@@ -36,6 +36,7 @@ impl FromStr for LLMRegistryEntryInstallStep {
 
 //We don't store these locally.
 #[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct LLMRegistryEntry {
     pub id: String,
     pub family_id: String,
@@ -69,17 +70,13 @@ pub async fn download_and_write_llm(
     uuid: Uuid,
     app: tauri::AppHandle,
 ) -> Result<(), Box<dyn std::error::Error>> {
-
     let state: tauri::State<'_, state::GlobalStateWrapper> = app.state();
 
     let stream_id = format!("{}-{}", llm_reg.id, uuid.to_string());
 
     if state.user_settings.read().unwrap().dedup_downloads {
         if let Ok(llm) = database::get_llm_by_url(llm_reg.url.clone(), state.pool.clone()) {
-
             return save_new_llm(uuid, llm.model_path.0.unwrap(), stream_id, llm_reg, app);
-
-
         }
     }
 
@@ -109,7 +106,6 @@ pub async fn download_and_write_llm(
 
     let mut stream = response.bytes_stream();
 
-
     //TODO: download progress for specific downloads
     let mut update_counter = 0;
     while let Some(item) = stream.next().await {
@@ -124,7 +120,7 @@ pub async fn download_and_write_llm(
         // If the total size of the object is known, calculate the percentage.
         if let Some(total_size) = total_size_opt {
             let percent = (downloaded as f32 / total_size as f32) * 100.0;
-            println!("Downloading {} at {}", llm_reg.id, percent);
+            info!("Downloading {} at {}", llm_reg.id, percent);
             app.emit_all(
                 "downloads",
                 emitter::EmitterEvent {
@@ -135,7 +131,7 @@ pub async fn download_and_write_llm(
                 },
             )?;
         } else {
-            println!("Downloading {} at {}", llm_reg.id, downloaded);
+            info!("Downloading {} at {}", llm_reg.id, downloaded);
             // otherwise, just emit the downloaded amount.
             app.emit_all(
                 "downloads",
@@ -158,7 +154,6 @@ fn save_new_llm(
     llm_reg: LLMRegistryEntry,
     app: tauri::AppHandle,
 ) -> Result<(), Box<dyn std::error::Error>> {
-
     let state: tauri::State<'_, state::GlobalStateWrapper> = app.state();
 
     let new_llm: llm::LLM = llm::LLM {
@@ -193,7 +188,7 @@ fn save_new_llm(
 
     match database::save_new_llm(new_llm, state.pool.clone()) {
         Ok(_) => {
-            println!("Successful download, llms serialized");
+            info!("Successful download, llms serialized");
             app.emit_all(
                 "downloads",
                 emitter::EmitterEvent {
@@ -203,7 +198,7 @@ fn save_new_llm(
             )?;
         }
         Err(_) => {
-            println!("Failed to save download");
+            info!("Failed to save download");
             app.emit_all(
                 "downloads",
                 emitter::EmitterEvent {

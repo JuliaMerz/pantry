@@ -1,21 +1,18 @@
 use crate::connectors; //::LLMRegistryEntry;
 use crate::connectors::llm_manager;
-
 use crate::llm;
-//::LLMRegistryEntry;
-
 use dashmap::DashMap;
 use diesel::prelude::*;
 use diesel::r2d2::ConnectionManager;
 use diesel::r2d2::Pool;
 use keyring;
+use log::{debug, error, info, warn, LevelFilter};
 use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use tauri::AppHandle;
-
 use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
+use tauri::AppHandle;
 use tiny_tokio_actor::*;
 
 use uuid::Uuid;
@@ -111,11 +108,11 @@ impl UserSettings {
                     match serde_json::from_str::<UserSettings>(&contents) {
                         Ok(settings) => return settings,
                         Err(_) => {
-                            println!("Failed to parse settings file. A new one will be created.")
+                            error!("Failed to parse settings file. A new one will be created.")
                         }
                     }
                 }
-                Err(_) => println!("Failed to read settings file. A new one will be created."),
+                Err(_) => error!("Failed to read settings file. A new one will be created."),
             }
         }
 

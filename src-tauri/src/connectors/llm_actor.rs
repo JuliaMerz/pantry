@@ -2,16 +2,13 @@ use crate::connectors;
 use crate::llm;
 use crate::user::User;
 use connectors::LLMInternalWrapper;
-
+use log::{debug, error, info, warn, LevelFilter};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::path::PathBuf;
-
 use tiny_tokio_actor::*;
-
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
-
 use uuid::Uuid;
 
 //src/connectors/llm_actor.rs
@@ -38,7 +35,7 @@ impl Actor<connectors::SysEvent> for LLMActor {
         match self.llm_internal.load_llm().await {
             Ok(_) => Ok(()),
             Err(err) => {
-                println!("Failure to load LLM: {:?}", err);
+                error!("Failure to load LLM: {:?}", err);
                 Err(ActorError::CreateError(err))
             }
         }
@@ -173,15 +170,14 @@ impl Handler<connectors::SysEvent, PromptSessionMessage> for LLMActor {
             )
             .await;
         msg.cancellation_token.cancel();
-        println!("TEST");
         self.llm_internal.maintenance().await;
         match result {
             Ok(()) => {
-                println!("Completed inference successfully.");
+                info!("Completed inference successfully.");
                 Ok(())
             }
             Err(err) => {
-                println!("Failed to complete inference: {:?}", err);
+                info!("Failed to complete inference: {:?}", err);
                 Ok(())
             }
         }

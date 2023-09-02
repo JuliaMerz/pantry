@@ -3,13 +3,12 @@ use crate::connectors::SysEvent;
 use crate::emitter;
 use crate::state;
 use crate::{connectors, error::PantryError};
-use tauri::AppHandle;
-
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool};
+use log::{debug, error, info, warn, LevelFilter};
 use serde_json::Value;
-
 use std::{collections::HashMap, path::PathBuf};
+use tauri::AppHandle;
 use tiny_tokio_actor::*;
 use uuid::Uuid;
 
@@ -66,7 +65,7 @@ impl Handler<SysEvent, CreateLLMActorMessage> for LLMManagerActor {
         msg: CreateLLMActorMessage,
         ctx: &mut ActorContext<SysEvent>,
     ) -> Result<ActorRef<SysEvent, LLMActor>, PantryError> {
-        println!("Running createllmactor handler");
+        debug!("Running createllmactor handler");
 
         let conn: connectors::LLMConnectorType = msg.connector.clone();
         let connection = connectors::get_new_llm_connector(
@@ -96,7 +95,7 @@ impl Handler<SysEvent, CreateLLMActorMessage> for LLMManagerActor {
             .await
         {
             Ok(act_ref) => {
-                println!("Created child");
+                debug!("Created child");
                 self.active_llm_actors
                     .insert(msg.uuid.clone(), act_ref.clone());
                 Ok(act_ref)
@@ -134,7 +133,7 @@ impl Handler<SysEvent, UnloadLLMActorMessage> for LLMManagerActor {
         msg: UnloadLLMActorMessage,
         ctx: &mut ActorContext<SysEvent>,
     ) -> Result<(), PantryError> {
-        println!("Running unloadLLM handler");
+        debug!("Running unloadLLM handler");
 
         if let Some(actor) = self.active_llm_actors.remove(&msg.uuid) {
             actor.ask(PreUnloadMessage {}).await;

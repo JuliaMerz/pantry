@@ -1,11 +1,11 @@
 //listener.rs
 use crate::state;
 use axum;
+use axum::routing::Router;
 use hyper::Server;
+use log::{debug, error, info, warn, LevelFilter};
 use std::fs;
 use tokio::sync::oneshot;
-
-use axum::routing::Router;
 
 // Bind the Unix socket
 
@@ -55,20 +55,20 @@ pub async fn create_listeners(
 
     match tokio::join!(flatten(tcp_handle), flatten(unix_handle)) {
         (Ok(_val), Ok(_val2)) => {
-            println!("Success?!");
+            info!("Successful shutdown.");
             fs::remove_file("/tmp/pantrylocal.sock")
                 .map_err(|err| format!("Error removing file: {:?}", err))
         }
         (Err(err), Ok(_)) => {
-            println!("Failed with {}.", err);
+            error!("Failed with {}.", err);
             Err(err)
         }
         (Ok(_), Err(err)) => {
-            println!("Failed 2 with {}.", err);
+            error!("Failed 2 with {}.", err);
             Err(err)
         }
         (Err(err), Err(err2)) => {
-            println!("Failed double with {} and {}.", err, err2);
+            error!("Failed double with {} and {}.", err, err2);
             Err(err)
         }
     }
@@ -107,10 +107,10 @@ pub async fn create_listeners(
     // if one crashes we wanna die
     match tokio::try_join!(flatten(tcp_handle)) {
         Ok(val) => {
-            println!("Success?!");
+            info!("Successful Shutdown");
         }
         Err(err) => {
-            println!("Failed with {}.", err);
+            error!("Failed with {}.", err);
         }
     };
     Ok(())

@@ -1,4 +1,5 @@
 use crate::connectors::LLMEvent;
+use log::{debug, error, info, warn, LevelFilter};
 use tauri::{AppHandle, Manager};
 use tokio::sync::mpsc;
 
@@ -30,7 +31,7 @@ pub async fn send_events<T: 'static>(
     app: AppHandle,
     convert: ConversionFunc<T>,
 ) {
-    println!("STARTING RECEIVER");
+    debug!("STARTING RECEIVER");
     while let Some(payload_inner) = rx.recv().await {
         match convert(stream_id.to_string(), payload_inner) {
             Ok(payload) => {

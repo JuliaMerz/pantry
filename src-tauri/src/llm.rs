@@ -6,11 +6,8 @@ use crate::database;
 use crate::database_types::*;
 use crate::error::PantryError;
 use crate::frontend;
-use tauri::AppHandle;
-
 use crate::state;
 use crate::user;
-
 use chrono::prelude::*;
 use chrono::DateTime;
 use chrono::Utc;
@@ -18,19 +15,17 @@ use dashmap::DashMap;
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool};
 use futures::future::join_all;
+use log::{debug, error, info, warn, LevelFilter};
 use rmp_serde;
-
 use serde_json::json;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs::File;
-
 use std::path::PathBuf;
 use std::sync::Arc;
+use tauri::AppHandle;
 use tiny_tokio_actor::*;
-
 use tokio::sync::mpsc;
-
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
@@ -360,7 +355,7 @@ impl LLMWrapper for LLMActivated {
         &self,
         user: user::User,
     ) -> Result<Vec<(LLMSession, Vec<LLMHistoryItem>)>, PantryError> {
-        println!(
+        debug!(
             "Called get_sessions with LLM UUID {} and user {:?}",
             self.llm_id, user
         );
@@ -374,7 +369,7 @@ impl LLMWrapper for LLMActivated {
         params: HashMap<String, Value>,
         user: user::User,
     ) -> Result<CreateSessionResponse, PantryError> {
-        println!(
+        debug!(
             "Called create_session with LLM UUID {} and user {:?}",
             self.llm_id, user
         );
@@ -415,7 +410,7 @@ impl LLMWrapper for LLMActivated {
         parameters: HashMap<String, Value>,
         user: user::User,
     ) -> Result<PromptSessionResponse, PantryError> {
-        println!(
+        debug!(
             "Called prompt_session with LLM UUID {} and user {:?}",
             self.llm.uuid.0, user
         );
@@ -467,14 +462,14 @@ impl LLMWrapper for LLMActivated {
             match result {
                 Ok(res) => match res {
                     Ok(()) => {
-                        println!("Completed inference successfully.");
+                        debug!("Completed inference successfully.");
                     }
                     Err(err) => {
-                        println!("Failed to complete inference: {:?}", err);
+                        error!("Failed to complete inference: {:?}", err);
                     }
                 },
                 Err(err) => {
-                    println!("Failed to send inference message: {:?}", err);
+                    error!("Failed to send inference message: {:?}", err);
                 }
             }
         });
@@ -597,10 +592,8 @@ impl LLMWrapper for LLMActivated {
         //api layer should verify user == user
         let _key = (session_id.clone(), user.id.clone());
 
-        println!("Attempting to interrupt session");
+        info!("Attempting to interrupt session");
         let key = (session_id.clone(), user.id.0.clone());
-
-        println!("For fuck sake: {:?}", self.interrupts);
 
         let res = self
             .interrupts
@@ -614,45 +607,13 @@ impl LLMWrapper for LLMActivated {
         match res {
             0 => Ok(false),
             _ => {
-                println!("we interrupted");
                 self.interrupts
                     .get_mut(&key)
                     .expect("We've already confirmed this exists.")
                     .clear();
-
-                println!("We're returning");
                 Ok(true)
             }
         }
-
-        // let result = self
-        //     .actor
-        //     .ask(llm_actor::InterruptSessionMessage {
-        //         session_id: session_id.clone(),
-        //         user: user.into(),
-        //     })
-        //     .await;
-
-        // match result {
-        //     Ok(res) => match res {
-        //         Ok(true) => {
-        //             println!("Disrupted inference.");
-        //             Ok(true)
-        //         }
-        //         Ok(false) => {
-        //             println!("No inference to interrupt.");
-        //             Ok(false)
-        //         }
-        //         Err(err) => {
-        //             println!("Failed to interrupt inference: {:?}", err);
-        //             Err(PantryError::OtherFailure(err))
-        //         }
-        //     },
-        //     Err(err) => {
-        //         println!("Failed to send interrupt message: {:?}", err);
-        //         Err(PantryError::OtherFailure(err.to_string()))
-        //     }
-        // }
     }
 
     fn into_llm_running(&self) -> frontend::LLMRunningInfo {

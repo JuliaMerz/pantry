@@ -1,3 +1,9 @@
+use crate::database_types::*;
+use crate::llm::{LLMHistoryItem, LLMSession, LLM};
+use crate::request::UserRequest;
+use crate::schema;
+use crate::user;
+use crate::user::User;
 use chrono::{DateTime, Utc};
 use diesel::debug_query;
 use diesel::dsl::sql;
@@ -8,16 +14,11 @@ use diesel::r2d2::{ConnectionManager, Pool};
 use diesel::sql_types::*;
 use diesel::sqlite::{Sqlite, SqliteType};
 use diesel::*;
+use log::{debug, error, info, warn, LevelFilter};
 use serde;
+use sha2::{Digest, Sha256, Sha512};
 use std::fmt;
 use uuid::Uuid;
-
-use crate::database_types::*;
-use crate::llm::{LLMHistoryItem, LLMSession, LLM};
-use crate::request::UserRequest;
-use crate::schema;
-use crate::user;
-use crate::user::User;
 // ON db migration generation:
 // %s/Timestamp/TimestamptzSqlite/g
 
@@ -246,9 +247,14 @@ pub fn save_new_user(
     pool: Pool<ConnectionManager<SqliteConnection>>,
 ) -> Result<User, diesel::result::Error> {
     let conn = &mut pool.get().unwrap();
+    let mut db_user = new_user.clone();
     use schema::user::dsl::*;
+    let mut hasher = Sha256::new();
+    hasher.update(new_user.api_key);
+    db_user.api_key = format!("{:X}", hasher.finalize());
+
     let user_id = new_user.id.0.clone();
-    diesel::insert_into(user).values(&new_user).execute(conn)?;
+    diesel::insert_into(user).values(&db_user).execute(conn)?;
     get_user(user_id, pool)
 }
 
@@ -321,7 +327,7 @@ pub fn update_permissions(
 ) -> Result<usize, diesel::result::Error> {
     let conn = &mut pool.get().unwrap();
     use schema::user::dsl::*;
-    println!("Updating to {:?}", perms);
+    debug!("Updating to {:?}", perms);
     diesel::update(user)
         .filter(id.eq(DbUuid(user_id)))
         .set((

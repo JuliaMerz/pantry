@@ -11,6 +11,7 @@ use crate::user;
 use chrono::serde::ts_seconds_option;
 use chrono::DateTime;
 use chrono::Utc;
+use log::{debug, error, info, warn, LevelFilter};
 use serde_json::Value;
 use std::collections::HashMap;
 use tauri::AppHandle;
@@ -176,7 +177,7 @@ pub async fn get_requests(
     state: tauri::State<'_, state::GlobalStateWrapper>,
 ) -> Result<CommandResponse<Vec<LLMRequestInfo>>, String> {
     // let requests = state.get_requests().await;
-    println!("received command get_reqs");
+    info!("received command get_reqs");
     let reqs = database::get_requests(state.pool.clone())
         .map_err(|err| format!("Database failure: {:?}", err))?;
     // let mut available_llms: Vec<LLMAvailable> = Vec::new();
@@ -261,10 +262,10 @@ pub async fn active_llms(
     state: tauri::State<'_, state::GlobalStateWrapper>,
 ) -> Result<CommandResponse<Vec<LLMRunningInfo>>, String> {
     let active_llms_iter = state.activated_llms.iter();
-    println!("received command active_llms");
+    info!("received command active_llms");
     let mut active_llms: Vec<LLMRunningInfo> = Vec::new();
     for pair in active_llms_iter {
-        println!("attempting to add an active");
+        debug!("attempting to add an active");
         let llm = pair.value();
         active_llms.push(llm.into_llm_running());
     }
@@ -276,7 +277,7 @@ pub async fn available_llms(
     app: tauri::AppHandle,
     state: tauri::State<'_, state::GlobalStateWrapper>,
 ) -> Result<CommandResponse<Vec<LLMAvailableInfo>>, String> {
-    println!("received command available_llms");
+    info!("received command available_llms");
     let available_llms_iter = database::get_available_llms(state.pool.clone())
         .map_err(|err| format!("Database failure: {:?}", err))?;
     // let mut available_llms: Vec<LLMAvailable> = Vec::new();
@@ -374,7 +375,7 @@ pub async fn ping(
     match state.manager_addr.ask(llm_manager::PingMessage {}).await {
         Ok(val) => match val {
             Ok(va) => {
-                println!("pingok");
+                debug!("pingok");
                 Ok(va)
             }
             Err(ma_err) => Err(ma_err.to_string()),
@@ -392,7 +393,7 @@ pub async fn load_llm(
     // let uuid = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
     let uuid = Uuid::parse_str(&uuid).map_err(|e| e.to_string())?;
 
-    println!("Attempting to load an LLM");
+    info!("Attempting to load an LLM");
     if state.activated_llms.contains_key(&uuid) {
         return Err("llm already loaded".into());
     }
@@ -419,7 +420,7 @@ pub async fn load_llm(
     // new_llm.load();
     match result {
         Ok(running) => {
-            println!("Inserting {uuid} into running LLMs");
+            debug!("Inserting {uuid} into running LLMs");
             state.activated_llms.insert(uuid, running);
             Ok(())
         }
@@ -487,7 +488,7 @@ pub async fn get_sessions(
     state: tauri::State<'_, state::GlobalStateWrapper>,
 ) -> Result<CommandResponse<Vec<(llm::LLMSession, Vec<llm::LLMHistoryItem>)>>, String> {
     let uuid = Uuid::parse_str(&llm_uuid).map_err(|e| e.to_string())?;
-    println!(
+    info!(
         "Frontend called get_sessions with LLM UUID {:?} and user {:?}",
         llm_uuid,
         user::get_local_user()
@@ -509,7 +510,7 @@ pub async fn create_session(
     _app: AppHandle,
     state: tauri::State<'_, state::GlobalStateWrapper>,
 ) -> Result<CommandResponse<CreateSessionResponse>, String> {
-    println!(
+    info!(
         "Frontend called create_session for {} with parameters {:?} and user {:?}",
         llm_uuid,
         user_session_parameters,
@@ -545,7 +546,7 @@ pub async fn prompt_session(
     app: AppHandle,
     state: tauri::State<'_, state::GlobalStateWrapper>,
 ) -> Result<CommandResponse<PromptSessionResponse>, String> {
-    println!(
+    info!(
         "Frontend called prompt_session with session_id {:?}, prompt {:?}, and user {:?}",
         session_id,
         prompt,
@@ -598,18 +599,18 @@ pub async fn call_llm(
     state: tauri::State<'_, state::GlobalStateWrapper>,
 ) -> Result<CommandResponse<CallLLMResponse>, String> {
     let uuid = Uuid::parse_str(&llm_uuid).map_err(|e| e.to_string())?;
-    println!(
+    info!(
         "frontend called {} with {} and params {:?}",
         uuid, prompt, user_parameters
     );
     if let Some(llm) = state.activated_llms.get(&uuid) {
         let _uuid = Uuid::new_v4();
         match state.manager_addr.ask(llm_manager::PingMessage()).await {
-            Ok(result) => println!("ping result: {:?}", result),
-            Err(err) => println!("ping error: {:?}", err),
+            Ok(result) => debug!("ping result: {:?}", result),
+            Err(err) => debug!("ping error: {:?}", err),
         }
 
-        println!("{:?}", llm.value().ping().await);
+        debug!("{:?}", llm.value().ping().await);
 
         match llm
             .value()
@@ -666,7 +667,7 @@ pub async fn unload_llm(
     state: tauri::State<'_, state::GlobalStateWrapper>,
 ) -> Result<(), String> {
     let uuid = Uuid::parse_str(&uuid).map_err(|e| e.to_string())?;
-    println!("Attempting to unload an LLM");
+    info!("Attempting to unload an LLM");
 
     if let Some(_running_llm) = state.activated_llms.remove(&uuid) {
         let unload_message = llm_manager::UnloadLLMActorMessage { uuid };
@@ -690,7 +691,7 @@ pub async fn delete_llm(
     state: tauri::State<'_, state::GlobalStateWrapper>,
 ) -> Result<(), String> {
     let uuid = Uuid::parse_str(&uuid).map_err(|e| e.to_string())?;
-    println!("Attempting to delete an LLM");
+    info!("Attempting to delete an LLM");
 
     if let Some(_running_llm) = state.activated_llms.remove(&uuid) {
         let unload_message = llm_manager::UnloadLLMActorMessage { uuid };
@@ -720,7 +721,7 @@ pub async fn interrupt_session(
     _app: AppHandle,
     state: tauri::State<'_, state::GlobalStateWrapper>,
 ) -> Result<CommandResponse<bool>, String> {
-    println!(
+    info!(
         "Frontend called interrupt_session for LLM UUID {}, session ID {}",
         llm_uuid, session_id
     );

@@ -13,13 +13,14 @@ edition = "2021"
 tauri-build = { version = "1.3", features = [] }
 
 [dependencies]
-tauri = { version = "1.4.1", features = ["clipboard-write-text", "http-request", "shell-open", "system-tray"] }
+tauri = { version = "1.4.1", features = ["cli", "clipboard-write-text", "http-request", "shell-open", "system-tray"] }
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
 tokio = { version = "1.28.0", features = ["full"] }
 chrono = { version = "0.4.24", features = ["serde", "rustc-serialize"] }
 dashmap = { version = "5.4.0", features = ["serde"] }
 tauri-plugin-store = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v1" }
+tauri-plugin-single-instance = { git = "https://github.com/juliamerz/plugins-workspace", branch = "v1" }
 bincode = "1.3.3"
 keyring = "2.0.3"
 tracing = "0.1.37"
@@ -45,6 +46,12 @@ r2d2 = "0.8.10"
 futures = "0.3.28"
 url = { version = "2", features = ["serde"] }
 tokio-stream = "0.1.14"
+indicatif = { version = "0.17.6", features= ["unicode-width", "tokio"] }
+env_logger = "0.10.0"
+prettytable-rs = "0.10.0"
+log = { version = "0.4.20", features= ["serde"] }
+sha2 = "0.10.7"
+pantry-rs = { git = "https://github.com/juliamerz/pantry-rs", branch = "main" }
 
 [target.'cfg(not(windows))'.dependencies]
 hyperlocal = { version = "0.8" }

@@ -4,12 +4,12 @@ use base64::{
     engine::{self, general_purpose},
     Engine as _,
 };
-
 use diesel::prelude::*;
+use log::{debug, error, info, warn, LevelFilter};
 use rand::Rng;
-
 use uuid::uuid;
 use uuid::Uuid;
+
 const CUSTOM_ENGINE: engine::GeneralPurpose =
     engine::GeneralPurpose::new(&alphabet::URL_SAFE, general_purpose::NO_PAD);
 
@@ -124,34 +124,11 @@ impl User {
         }
     }
 }
-// pub fn serialize_all(
-//     path: PathBuf,
-//     users: DashMap<Uuid, User>,
-// ) -> Result<(), Box<dyn std::error::Error>> {
-//     let user_iter = users.iter();
 
-//     let user_vec: Vec<User> = user_iter.map(|val| (*(val.value())).clone()).collect();
-//     let mut file = File::create(path)?;
-//     rmp_serde::encode::write_named(&mut file, &user_vec)?;
-//     // file.write_all(&encoded)?;
-//     Ok(())
-// }
-
-// pub fn deserialize_all(path: PathBuf) -> Result<DashMap<Uuid, User>, Box<dyn std::error::Error>> {
-//     let mut file = File::open(path)?;
-//     let users: Vec<User> = rmp_serde::decode::from_read(&file)?;
-//     let blank_map = DashMap::new();
-//     users
-//         .into_iter()
-//         .map(|val| blank_map.insert(val.id.clone(), val));
-
-//     // let mut buffer = Vec::new();
-//     // file.read_to_end(&mut buffer)?;
-//     // let llms: Vec<LLM> = rmp_serde::deserialize(&buffer)?;
-//     Ok(blank_map)
-// }
-
-fn generate_api_key() -> String {
+// The first time the user gets generated, this API key is in clear text.
+// It gets hashed into the DB, then hashed every time it gets checked in the API layer
+// before being compared to the saved DB value.
+pub fn generate_api_key() -> String {
     let mut rng = rand::thread_rng();
     let key: [u8; 32] = rng.gen();
     CUSTOM_ENGINE.encode(&key)
@@ -161,7 +138,7 @@ pub fn get_local_user() -> User {
     User {
         id: DbUuid(uuid!("00000000-0000-0000-0000-000000000000")),
         name: "local".into(),
-        api_key: "local".into(), //This isn't important because local calls skip the user auth layer
+        api_key: "".into(), //This isn't important because local calls skip the user auth layer
         perm_superuser: true,
         perm_load_llm: false,
         perm_unload_llm: false,

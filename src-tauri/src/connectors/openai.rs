@@ -4,16 +4,13 @@ use crate::llm::LLMSession;
 use crate::state;
 use crate::user::User;
 use chrono::Utc;
-
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool};
+use log::{debug, error, info, warn, LevelFilter};
 use serde_json::Value;
 use std::collections::HashMap;
-
 use std::path::PathBuf;
-
 use tiny_tokio_actor::*;
-
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
@@ -96,7 +93,7 @@ impl LLMInternalWrapper for OpenAIConnector {
         _cancellation: CancellationToken,
     ) -> Result<(), String> {
         // Here we find the session by ID in our sessions vector
-        println!("attempting to find session");
+        debug!("attempting to find session");
         todo!();
         Ok(())
     }

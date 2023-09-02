@@ -10,13 +10,16 @@ use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool};
+use llm::samplers::llm_samplers::prelude::Sampler;
 use llm::InferenceSession;
+use log::{debug, error, info, warn, LevelFilter};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
+use std::str::FromStr;
 
 use tiny_tokio_actor::*;
 use tokio::sync::mpsc;
@@ -91,7 +94,7 @@ impl LLMrsConnector {
             self.uuid.to_string(),
             format!("Rehydrating session for {}", self.id.to_string()),
         );
-        println!("Rehyrdatring session {:?}", llm_sess.id);
+        info!("Rehyrdatring session {:?}", llm_sess.id);
         let mut path = self.data_path.clone();
         path.push(llm_sess.id.0.to_string());
 
@@ -126,7 +129,7 @@ impl LLMrsConnector {
 
     fn dehydrate_session(&self, llmrs_sess: LLMrsSession) -> Result<(), String> {
         let mut raw = llmrs_sess.model_session.lock().unwrap();
-        println!("dehydrating session");
+        info!("dehydrating session");
         self.notification_emitter.send_notification(
             self.uuid.to_string(),
             format!(
@@ -154,7 +157,7 @@ impl LLMrsConnector {
     // return get(&session_id). So instead we return sessionid and the end
     // user needs to use it. This, ironically, is _less_ typesafe but whatever.
     fn get_session_check(&self, session_id: &Uuid) -> Result<Uuid, String> {
-        println!("Checking session {}", session_id.to_string());
+        debug!("Checking session {}", session_id.to_string());
         // if let Some(sess) = self.loaded_sessions.get(&session_id) {
         //     return Ok(sess.value());
         // }
@@ -162,7 +165,7 @@ impl LLMrsConnector {
             return Ok(session_id.clone());
         }
 
-        println!("Getting session from DB");
+        debug!("Getting session from DB");
         let session: LLMSession = database::get_llm_session(session_id.clone(), self.pool.clone())
             .map_err(|err| format!("Database failure, probably not found: {:?}", err))?;
 
@@ -199,29 +202,8 @@ struct LLMrsSessionDeserial {
 impl LLMInternalWrapper for LLMrsConnector {
     // async fn call_llm(self: &mut Self, msg: String, session_params: HashMap<String, Value>, params: HashMap<String, Value>, user: User) -> Result<(Uuid, mpsc::Receiver<LLMEvent>), String> {
 
-    //     println!("Triggered call llm for {:?} with \"{}\" and {:?}", user, msg, params);
-
-    //     // Create a new session with the provided parameters
-    //     let session_id = self.create_session(session_params, user.clone()).await?;
-    //     println!("created a session");
-
-    //     // Now that a new session is created, we need to prompt it immediately with the given message
-    //     match self.prompt_session(session_id, msg, params, user).await {
-    //         Ok(stream) => Ok((session_id, stream)),
-    //         Err(e) => Err(e)
-    //     }
-    // }
-    // async fn get_sessions(self: &Self, user: User) -> Result<Vec<LLMSession>, String> {
-    //     let sesss: Vec<LLMSession> = self
-    //         .sessions
-    //         .iter()
-    //         .filter(|ff| ff.value().llm_session.read().unwrap().user_id == user.id)
-    //         .map(|ff| ff.value().llm_session.as_ref().read().unwrap().clone())
-    //         .collect();
-    //     return Ok(sesss);
-    // }
     async fn maintenance(&mut self) -> Result<(), String> {
-        println!("HERE: HERE: Running maintenance check...");
+        debug!("Running maintenance check...");
         if self.loaded_sessions.len() > 1 {
             // if self.loaded_sessions.len() > self.user_settings.preferred_active_sessions {
             let mut llm_list: Vec<(Uuid, DateTime<Utc>)> = self
@@ -245,7 +227,7 @@ impl LLMInternalWrapper for LLMrsConnector {
                 .1;
 
             self.dehydrate_session(llmrs_sess)?;
-            println!(
+            debug!(
                 "now have this loaded session struct: {:?}",
                 self.loaded_sessions.len()
             );
@@ -267,11 +249,15 @@ impl LLMInternalWrapper for LLMrsConnector {
             .model
             .write()
             .map_err(|err| format!("probably rwgard: {:?}", err))?;
+        let mut inference_session_config: llm::InferenceSessionConfig = Default::default();
+        inference_session_config.n_threads = self.user_settings.n_thread;
+        inference_session_config.n_batch = self.user_settings.n_batch;
+
         //TODO: User settings for implementing gpu accel
         let inference = model_read
             .as_mut()
             .expect("model missing")
-            .start_session(Default::default());
+            .start_session(inference_session_config);
         let uuid = Uuid::new_v4();
 
         let new_session = LLMrsSession {
@@ -309,43 +295,52 @@ impl LLMInternalWrapper for LLMrsConnector {
         // The infer function is blocking, and once we start we can't move to another thread
         // which means we need to move to another thread NOW and return our sender.
 
-        println!("Received call to prompt session");
-        let mut sampler = llm::samplers::TopPTopK::default();
-        if let Some(Value::Number(n)) = params.get("top_k") {
-            if let Some(top_k) = n.as_u64() {
-                sampler.top_k = top_k as usize;
-            }
-        }
+        debug!("Received call to prompt session");
+        let mut sampler = llm::samplers::default_samplers();
 
-        if let Some(Value::Number(n)) = params.get("top_p") {
-            if let Some(top_p) = n.as_f64() {
-                sampler.top_p = top_p as f32;
+        if let Some(Value::String(s)) = params.get("sampler_string") {
+            // if let Ok(sampler_str) = s.parse() {
+            if let Ok(configured_samplers) = llm::samplers::ConfiguredSamplers::from_str(&s) {
+                // let new_sampler: dyn llm::samplers::Sampler<llm::TokenId, f32> =
+                //     configured_samplers;
+                sampler = Arc::new(Mutex::new(configured_samplers.builder.into_chain()));
             }
         }
+        // if let Some(Value::Number(n)) = params.get("top_k") {
+        //     if let Some(top_k) = n.as_u64() {
+        //         sampler.top_k = top_k as usize;
+        //     }
+        // }
 
-        if let Some(Value::Number(n)) = params.get("repeat_penalty") {
-            if let Some(repeat_penalty) = n.as_f64() {
-                sampler.repeat_penalty = repeat_penalty as f32;
-            }
-        }
+        // if let Some(Value::Number(n)) = params.get("top_p") {
+        //     if let Some(top_p) = n.as_f64() {
+        //         sampler.top_p = top_p as f32;
+        //     }
+        // }
 
-        if let Some(Value::Number(n)) = params.get("temperature") {
-            if let Some(temperature) = n.as_f64() {
-                sampler.temperature = temperature as f32;
-            }
-        }
+        // if let Some(Value::Number(n)) = params.get("repeat_penalty") {
+        //     if let Some(repeat_penalty) = n.as_f64() {
+        //         sampler.repeat_penalty = repeat_penalty as f32;
+        //     }
+        // }
 
-        if let Some(Value::String(s)) = params.get("bias_tokens") {
-            if let Ok(bias_tokens) = s.parse() {
-                sampler.bias_tokens = bias_tokens;
-            }
-        }
+        // if let Some(Value::Number(n)) = params.get("temperature") {
+        //     if let Some(temperature) = n.as_f64() {
+        //         sampler.temperature = temperature as f32;
+        //     }
+        // }
 
-        if let Some(Value::Number(n)) = params.get("repetition_penalty_last_n") {
-            if let Some(repetition_penalty_last_n) = n.as_u64() {
-                sampler.repetition_penalty_last_n = repetition_penalty_last_n as usize;
-            }
-        }
+        // if let Some(Value::String(s)) = params.get("bias_tokens") {
+        //     if let Ok(bias_tokens) = s.parse() {
+        //         sampler.bias_tokens = bias_tokens;
+        //     }
+        // }
+
+        // if let Some(Value::Number(n)) = params.get("repetition_penalty_last_n") {
+        //     if let Some(repetition_penalty_last_n) = n.as_u64() {
+        //         sampler.repetition_penalty_last_n = repetition_penalty_last_n as usize;
+        //     }
+        // }
 
         let mut stop_sequence = None;
         let mut processed_prompt = prompt;
@@ -362,11 +357,7 @@ impl LLMInternalWrapper for LLMrsConnector {
             }
         }
 
-        let _inf_params = llm::InferenceParameters {
-            n_threads: self.user_settings.n_thread,
-            n_batch: self.user_settings.n_batch,
-            sampler: Arc::new(sampler),
-        };
+        let _inf_params = llm::InferenceParameters { sampler: sampler };
         self.get_session_check(&session_id)?;
         let session_wrapped = self
             .loaded_sessions
@@ -378,6 +369,10 @@ impl LLMInternalWrapper for LLMrsConnector {
             .as_ref()
             .lock()
             .map_err(|err| format!("failed to acquire lock: {:?}", err))?;
+
+        // let n_vocab = model_armed.n_vocab();
+
+        // llm::samplers::build_sampler(n_vocab, &[], args)
 
         let llm_session_armed = session_wrapped
             .llm_session
@@ -407,7 +402,7 @@ impl LLMInternalWrapper for LLMrsConnector {
             self.uuid.to_string(),
             format!("Beginning inference for {}", self.id.to_string()),
         );
-        println!("Attempting to infer");
+        debug!("Attempting to infer");
         // Call the llm
         model_armed
             .infer::<mpsc::error::SendError<LLMEvent>>(
@@ -481,10 +476,10 @@ impl LLMInternalWrapper for LLMrsConnector {
                         tokio::task::spawn(async move {
                             let print_clone = event_clone.event.clone();
                             if let Err(e) = send_clone.send(event_clone).await {
-                                println!("Error sending, so cancelling.");
+                                warn!("Error sending, so cancelling.");
                                 cancel_token.cancel();
                             }
-                            println!("Sent an event from llmrs for {:?}", print_clone);
+                            debug!("Sent an event from llmrs for {:?}", print_clone);
                         });
                         if cancellation.is_cancelled() {
                             cancel = true;
@@ -494,7 +489,7 @@ impl LLMInternalWrapper for LLMrsConnector {
                             database::append_token(update_item, t, cancel, self.pool.clone())
                                 .unwrap();
                         if cancel {
-                            println!("SENT CONCLUSION");
+                            debug!("SENT CONCLUSION");
                             let mut event_clone = event.clone();
                             event_clone.event = LLMEventInternal::PromptCompletion {
                                 previous: update_item.output.clone().into(),
@@ -507,7 +502,7 @@ impl LLMInternalWrapper for LLMrsConnector {
                             tokio::task::spawn(async move {
                                 let print_clone = event_clone.event.clone();
                                 send_clone.send(event_clone).await;
-                                println!("Sent an event from llmrs for {:?}", print_clone);
+                                debug!("Sent an event from llmrs for {:?}", print_clone);
                             });
                         }
                         match cancel {
@@ -529,7 +524,7 @@ impl LLMInternalWrapper for LLMrsConnector {
                         Ok(llm::InferenceFeedback::Halt)
                     }
                     _ => {
-                        println!("got other");
+                        debug!("got other");
                         match cancellation.is_cancelled() {
                             // TODO: mark complete here
                             // TODO: mark complete final token whatever
@@ -541,7 +536,7 @@ impl LLMInternalWrapper for LLMrsConnector {
             )
             .map_err(|err| format!("failure to infer with {:?}", err))?;
 
-        println!("Sending back receiver");
+        debug!("Sending back receiver");
         Ok(())
     }
 
@@ -600,7 +595,7 @@ impl LLMInternalWrapper for LLMrsConnector {
             self.dehydrate_session(self.loaded_sessions.remove(&uuid).expect("beep").1);
         }
 
-        println!("successfully unloaded {:?}", self.uuid);
+        info!("successfully unloaded {:?}", self.uuid);
 
         //we don't remove because we're about to drain
         Ok(())

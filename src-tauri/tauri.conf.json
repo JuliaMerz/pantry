@@ -57,6 +57,87 @@
         "width": 1024,
         "height": 900
       }
-    ]
+    ],
+    "cli": {
+      "description": "",
+      "longDescription": "",
+      "beforeHelp": "",
+      "afterHelp": "",
+      "args": [],
+      "subcommands": {
+        "list": {
+          "description": "Lists running, available, or downloadable LLM configurations. Defaults to running",
+          "longDescription": "",
+          "beforeHelp": "",
+          "afterHelp": "",
+          "args": [],
+          "subcommands": {
+            "running": {
+              "description": "Lists running LLM configurations.",
+              "longDescription": "",
+              "beforeHelp": "",
+              "afterHelp": "",
+              "args": []
+            },
+            "available": {
+              "description": "Lists available LLM configurations.",
+              "longDescription": "",
+              "beforeHelp": "",
+              "afterHelp": "",
+              "args": []
+            },
+            "downloadable": {
+              "description": "Lists downloadable LLM configurations.",
+              "longDescription": "",
+              "beforeHelp": "",
+              "afterHelp": "",
+              "args": []
+            }
+          }
+        },
+        "activate": {
+          "description": "Activates an LLM configuration.",
+          "longDescription": "",
+          "beforeHelp": "",
+          "afterHelp": "",
+          "args": [
+            {
+              "name": "llm_id",
+              "index": 1,
+              "takesValue": true
+            }
+          ],
+          "subcommands": {}
+        },
+        "deactivate": {
+          "description": "Lists running, available, or downloadable LLM configurations. Defaults to running",
+          "longDescription": "",
+          "beforeHelp": "",
+          "afterHelp": "",
+          "args": [
+            {
+              "name": "llm_id",
+              "index": 1,
+              "takesValue": true
+            }
+          ],
+          "subcommands": {}
+        },
+        "path": {
+          "description": "Gets the model path of a downloaded LLM",
+          "longDescription": "",
+          "beforeHelp": "",
+          "afterHelp": "",
+          "args": [
+            {
+              "name": "llm_id",
+              "index": 1,
+              "takesValue": true
+            }
+          ],
+          "subcommands": {}
+        }
+      }
+    }
   }
 }
