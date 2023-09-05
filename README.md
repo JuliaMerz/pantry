@@ -10,7 +10,7 @@ the ability to run multiple LLMs in parallel, a UI, a CLI, and an API.
 
 ## Getting Started
 
-Just download one of the builds, download an LLM, turn it on, and go.
+Just [download one of the builds](https://github.com/JuliaMerz/pantry/releases/tag/app-v0.0.1), use it to download an LLM, turn it on, and go.
 
 You can either use the UI to access the LLM, use `pantry path <llm_id>` to get the LLM's
 local path and plug it into your favorite local LLM software, or use the [pantry-rs](https://github.com/JuliaMerz/pantry-rs)
