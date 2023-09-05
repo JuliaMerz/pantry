@@ -71,9 +71,11 @@ let pantry = PantryClient::register("project_name".into(), perms).await.unwrap()
 
 // Pause here and use the UI to accept the permission request.
 
-// Use this if you want your code to load an LLM first.
+// You'll need a running model, so you'll need to enable it in the UI or
+// uncomment this if you want your code to handle the loading.
 // pantry.load_llm_flex(None, None).await.unwrap();
 
+// This will choose the running model with the highest capability score.
 let sess = pantry.create_session(HashMap::new()).await.unwrap();
 
 let recv = ses.prompt_session("About me: ".into(), HashMap::new()).await.unwrap();
