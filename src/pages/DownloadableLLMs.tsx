@@ -565,6 +565,7 @@ function DownloadableLLMs() {
   return (
     <Box>
       <Typography variant="h2">Downloadable Large Language Models</Typography>
+      <Typography>If a model isn't in the registry, you can use Add Registry Entry to add it. Almost all parameters are option, you only need a name, a machine ID, and a url.</Typography>
 
       <Box sx={{my: 2}}>
         <Button variant="contained" color="primary" onClick={() => setRegistryEntryModalOpen(true)}>
