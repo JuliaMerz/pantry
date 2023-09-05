@@ -1,13 +1,22 @@
-# Pantry
+# Pantry — An LLM Manager
 
 Pantry is a cross between Homebrew and Docker, for LLMs. It combines an LLM repository, a local LLM runner,
 and a remote API, accessed via UI or CLI.
 
-It's also, literally, the easiest way to download and run *any* GGML compatible LLM.
+![An AI generated pair of smiling computers.](./pantry_fancy.png)
+
+Out of the box, Pantry includes one click downloads, custom sharapable configurations (with deep links!),
+the ability to run multiple LLMs in parallel, a UI, a CLI, and an API.
 
 ## Getting Started
 
 Just download one of the builds, download an LLM, turn it on, and go.
+
+You can either use the UI to access the LLM, use `pantry path <llm_id>` to get the LLM's
+local path and plug it into your favorite local LLM software, or use the [pantry-rs](https://github.com/JuliaMerz/pantry-rs)
+api to integrate the LLMs into your own application. If you're feeling extra fancy
+you can use HTTP, though you'll have to use the [docs.rs](https://docs.rs/pantry-rs/latest/pantry_rs/api/struct.PantryAPI.html)
+to figure out the API.
 
 ## Usage
 
@@ -83,7 +92,7 @@ the same time, or if you're running multiple API programs accessing the same LLM
 ### Add Models and Capability Evaluations
 I tried to include a decent set of 'known-good' models in the default model repository.
 To be honest I've been too busy building this to spend a lot of time testing them,
-so if a model belongs here, please pull request it. Help ranking the capabilities
+so if there's a ggml model you like, please pull request it. Help ranking the capabilities
 of existing or new models would also be appreciated.
 
 ### Additional APIs
@@ -102,15 +111,9 @@ the time to do it.
 ## Backlog
 - **OpenAI/Other Remote LLM Integration** — The entire architecure is designed to allow this,
 and we're not currently taking advantage of it.
-- **Headless/Terminal Mode** — Use terminal commands instead of the frontend.
 - **Non-Text Models**
 - **Better parallelism** — currently the model locks during inference, leading to a
 potentially ugly queuing situation is a program is running an LLM in the background
 while the user is using a different program with an LLM.
 - **Expand the CLI** — currently limited to only basic commands.
-
-## Todos
-Better instrumentation from the UI for when external programs are running things.
-Better documentation.
-Add system prompt implementation to llmrs.
 
