@@ -1,5 +1,5 @@
 use crate::connectors::LLMEvent;
-use log::{debug, error, info, warn, LevelFilter};
+use log::{debug};
 use tauri::{AppHandle, Manager};
 use tokio::sync::mpsc;
 

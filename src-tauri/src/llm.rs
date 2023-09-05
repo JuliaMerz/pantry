@@ -1,7 +1,7 @@
 use crate::connectors;
 use crate::connectors::llm_actor;
 use crate::connectors::llm_manager;
-use crate::connectors::SysEvent;
+
 use crate::database;
 use crate::database_types::*;
 use crate::error::PantryError;
@@ -14,8 +14,8 @@ use chrono::Utc;
 use dashmap::DashMap;
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool};
-use futures::future::join_all;
-use log::{debug, error, info, warn, LevelFilter};
+
+use log::{debug, error, info};
 use rmp_serde;
 use serde_json::json;
 use serde_json::Value;

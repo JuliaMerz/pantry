@@ -479,7 +479,8 @@ const LLMRunningInfo: React.FC<LLMRunningInfoProps> = ({
                     ) : null}
                     {Object.keys(userParametersState).length > 0 ? (
                       <>
-                        <Typography component="label">User Parameters (Optional):</Typography>
+                        <Typography >User Parameters (Optional):</Typography>
+                        <Typography variant="subtitle2">sampler_string (if available) is based on <Link href="https://github.com/rustformers/llm/blob/18b2a7d37e56220487e851a45badc46bf9dcb9d3/crates/llm-base/src/samplers.rs#L214">this format</Link> for <Link href="https://docs.rs/llm-samplers/0.0.6/llm_samplers/">llm_sampler</Link>, which you should also visit for examples.</Typography>
                         <Grid container sx={{
 
                           marginY: 1

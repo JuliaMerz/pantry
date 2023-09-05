@@ -1,8 +1,8 @@
 use crate::connectors;
-use crate::llm;
+
 use crate::user::User;
 use connectors::LLMInternalWrapper;
-use log::{debug, error, info, warn, LevelFilter};
+use log::{error, info};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -196,7 +196,7 @@ impl Message for PreUnloadMessage {
 impl Handler<connectors::SysEvent, PreUnloadMessage> for LLMActor {
     async fn handle(
         &mut self,
-        msg: PreUnloadMessage,
+        _msg: PreUnloadMessage,
         _ctx: &mut ActorContext<connectors::SysEvent>,
     ) -> Result<(), String> {
         self.llm_internal.pre_unload().await

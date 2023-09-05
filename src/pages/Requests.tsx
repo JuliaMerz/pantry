@@ -24,6 +24,8 @@ function Requests() {
 
     <Box>
       <Typography variant="h2">Program Requests</Typography>
+      <Typography>Programs interfacing with the pantry API will show up here when they first request permission.
+        They can also make requests here to download, activate, or deactivate models.</Typography>
       <Box>
         {requests.map((req) => {
           return (<UserRequestInfo key={req.id} request={req} />)

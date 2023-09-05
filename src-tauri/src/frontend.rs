@@ -1,4 +1,3 @@
-use crate::connectors;
 use crate::connectors::llm_manager;
 use crate::database;
 use crate::emitter;
@@ -11,12 +10,12 @@ use crate::user;
 use chrono::serde::ts_seconds_option;
 use chrono::DateTime;
 use chrono::Utc;
-use log::{debug, error, info, warn, LevelFilter};
+use log::{debug, info};
 use serde_json::Value;
 use std::collections::HashMap;
 use tauri::AppHandle;
 use tauri::Manager;
-use url::Url;
+
 use uuid::Uuid;
 
 //
@@ -206,7 +205,7 @@ pub async fn accept_request(
             let uuid = Uuid::new_v4();
             let llm_reg = dlr.llm_registry_entry;
 
-            let id = llm_reg.id.clone();
+            let _id = llm_reg.id.clone();
 
             tokio::spawn(async move {
                 registry::download_and_write_llm(llm_reg, uuid, app.clone()).await;
@@ -274,7 +273,7 @@ pub async fn active_llms(
 
 #[tauri::command]
 pub async fn available_llms(
-    app: tauri::AppHandle,
+    _app: tauri::AppHandle,
     state: tauri::State<'_, state::GlobalStateWrapper>,
 ) -> Result<CommandResponse<Vec<LLMAvailableInfo>>, String> {
     info!("received command available_llms");
@@ -740,4 +739,27 @@ pub async fn interrupt_session(
     } else {
         Err(format!("LLM with UUID {} not found", llm_uuid))
     }
+}
+
+#[tauri::command]
+pub async fn exec_path(app: AppHandle) -> Result<CommandResponse<String>, String> {
+    Ok(CommandResponse {
+        data: tauri::utils::platform::current_exe()
+            .map_err(|e| format!("Failed to get current path."))?
+            .into_os_string()
+            .into_string()
+            .map_err(|e| format!("Failed to convert current path."))?,
+    })
+}
+
+#[tauri::command]
+pub async fn new_cli_user(
+    app: AppHandle,
+    state: tauri::State<'_, state::GlobalStateWrapper>,
+) -> Result<CommandResponse<user::UserInfo>, String> {
+    let mut u = user::User::new("cli_user".into());
+    u.perm_superuser = true;
+    let user_info = (&u).into();
+    database::save_new_user(u, state.pool.clone());
+    Ok(CommandResponse { data: user_info })
 }

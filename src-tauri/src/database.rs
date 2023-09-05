@@ -4,20 +4,20 @@ use crate::request::UserRequest;
 use crate::schema;
 use crate::user;
 use crate::user::User;
-use chrono::{DateTime, Utc};
-use diesel::debug_query;
-use diesel::dsl::sql;
-use diesel::internal::table_macro::SelectStatement;
+use chrono::{Utc};
+
+
+
 use diesel::prelude::*;
-use diesel::query_builder::AsQuery;
+
 use diesel::r2d2::{ConnectionManager, Pool};
-use diesel::sql_types::*;
-use diesel::sqlite::{Sqlite, SqliteType};
-use diesel::*;
-use log::{debug, error, info, warn, LevelFilter};
-use serde;
-use sha2::{Digest, Sha256, Sha512};
-use std::fmt;
+
+
+
+use log::{debug};
+
+use sha2::{Digest, Sha256};
+
 use uuid::Uuid;
 // ON db migration generation:
 // %s/Timestamp/TimestamptzSqlite/g
@@ -264,7 +264,7 @@ pub fn get_llm_sessions_user(
     pool: Pool<ConnectionManager<SqliteConnection>>,
 ) -> Result<Vec<(LLMSession, Vec<LLMHistoryItem>)>, diesel::result::Error> {
     let conn = &mut pool.get().unwrap();
-    use schema::llm_history::dsl as history_dsl;
+    
     use schema::llm_session::dsl as session_dsl;
     let sessions = session_dsl::llm_session
         .filter(session_dsl::llm_uuid.eq(llm_id))

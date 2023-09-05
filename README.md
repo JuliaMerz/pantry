@@ -1,33 +1,43 @@
 # Pantry
 
-Pantry is like homebrew for LLMs. It combines an LLM repository, a local LLM runner,
-and a language agnostic integration API. So you can play with or integrate LLMs
-without managing the underlying models.
+Pantry is a cross between Homebrew and Docker, for LLMs. It combines an LLM repository, a local LLM runner,
+and a remote API, accessed via UI or CLI.
 
-It's also, literally, the easiest way to download and run any GGML compatible LLM.
+It's also, literally, the easiest way to download and run *any* GGML compatible LLM.
 
 ## Getting Started
 
 Just download one of the builds, download an LLM, turn it on, and go.
 
-## Why?
-
-I built this because I wanted to test different LLMs for a project, and it seemed
-harder than it needed to be.
-
-I wanted to build my project to be LLM agnostic, especially for users or organizations
-who wanted to insert their own fine-tuned LLMs into the project.
-
-So I built this first.
-
 ## Usage
 
 https://github.com/JuliaMerz/pantry/assets/5734804/9e0d11be-5f8b-4220-b87c-f989fc6982fb
+
+https://github.com/JuliaMerz/pantry/assets/5734804/1d4692c3-5c83-4431-a025-c8f8fd94b244
 
 Currently Pantry is compatible with all LLMs supported by the
 [rustformers/llm project](https://github.com/rustformers/llm). That's an ever-expanding
 set of LLMs based on the ggml project.
 
+
+### CLI
+
+You'll need to add the CLI to your path in order to use it. The UI has instructions for doing so,
+or you can create an alias to the install location manually. Once you've done so, `pantry --help`
+will give you a list of commands.
+
+By default, the CLI uses keychain based authentication to connect to your localhost Pantry instance.
+In order to use it an instance of pantry must already be running (you can close the window, it runs in your menubar).
+
+You can set
+```
+PANTRY_CLI_TARGET
+PANTRY_CLI_USER
+PANTRY_CLI_KEY
+```
+to get rid of the keychain request, using the command `pantry new_cli_user`. You can also open the UI for more instructions.
+
+The CLI currently does not allow you to query the LLM, you'll have to use either the UI or a program running [pantry-rs](https://github.com/JuliaMerz/pantry-rs) or making http requests.
 
 ### APIs
 Pantry exposes an API via http-over-socket or localhost, at `/tmp/pantrylocal.sock`
@@ -63,42 +73,11 @@ let recv = ses.prompt_session("About me: ".into(), HashMap::new()).await.unwrap(
 - **Web** — Look up the API docs at [docs.rs](https://docs.rs/pantry-rs/latest/pantry_rs/api/struct.PantryAPI.html). Proper API docs coming soon.
 - **Rust** — [JuliaMerz/pantry-rs](https://github.com/JuliaMerz/pantry-rs)
 
-## Philosphy and Project Goals (Fancy 'Why?')
+## Limitations
 
-Pantry is designed for a future where a large number of LLMs are run locally or on prem. Large
-organizations are already banning the usage of ChatGPT due to data control issues,
-and as LLMs grow more powerful in _acting_ on data, ownership of data will only
-become more valuable.
-
-In the medium term, building your own update flow for integrated LLMs is annoying for
-developers, and having a bunch of applications trying to run LLMs independently of
-each other on a resource constrained machine is annoying for users.
-
-In the long term organizations will fine-tune their own models to use with pluggable software.
-
-### Project Goals
-- Make LLMs more accessible both to enthusiasts and organizations.
-- Push LLM computation to the edge, in alignment with the [ggml project](http://ggml.ai/).
-- Give developers an easy way to integrate LLMs in a model agnostic way.
-
-## Long Term
-Push forward edge-LLMs by providing the tools to better test, measure, and compare them.
-
-
-## Backlog
-- **OpenAI/Other Remote LLM Integration** — The entire architecure is designed to allow this,
-and we're not currently taking advantage of it.
-- **Headless/Terminal Mode** — Use terminal commands instead of the frontend.
-- **Non-Text Models**
-- **Better parallelism** — currently the model locks during inference, leading to a
-potentially ugly queuing situation is a program is running an LLM in the background
-while the user is using a different program with an LLM.
-
-## Todos
-Better instrumentation from the UI for when external programs are running things.
-Better documentation.
-Add system prompt implementation to llmrs.
-
+The system is currently great at running multiple LLMs at once, though obviously performance suffers. It unfortunately doesn't allow you to access
+the same LLM in parallel, because the model locks while it's running. This is only likely to be an issue if you're using the UI and the API at
+the same time, or if you're running multiple API programs accessing the same LLM at once.
 
 ## How You Can Help
 ### Add Models and Capability Evaluations
@@ -119,4 +98,19 @@ since it would allow the "capabilities" field to be based on more than just "vib
 ### Testing/CI
 I'd love to have proper regression testing and automated CI. I just haven't had
 the time to do it.
+
+## Backlog
+- **OpenAI/Other Remote LLM Integration** — The entire architecure is designed to allow this,
+and we're not currently taking advantage of it.
+- **Headless/Terminal Mode** — Use terminal commands instead of the frontend.
+- **Non-Text Models**
+- **Better parallelism** — currently the model locks during inference, leading to a
+potentially ugly queuing situation is a program is running an LLM in the background
+while the user is using a different program with an LLM.
+- **Expand the CLI** — currently limited to only basic commands.
+
+## Todos
+Better instrumentation from the UI for when external programs are running things.
+Better documentation.
+Add system prompt implementation to llmrs.
 

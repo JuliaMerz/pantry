@@ -1,20 +1,19 @@
 //server.rs
-use crate::connectors::LLMEvent;
+
 use crate::database;
 use crate::database_types::DbUuid;
 use crate::listeners::create_listeners;
 use crate::llm::{LLMActivated, LLMWrapper, LLM};
 use crate::llm_manager;
-use crate::registry;
+use crate::registry::{self, DownloadingLLM};
 use crate::request;
 use crate::request::{UserRequest, UserRequestType};
-use crate::schema;
+
 use crate::state;
 use crate::user;
 use axum::{extract::State, Json};
 use axum::{
     response::sse::{Event, KeepAlive, Sse},
-    routing::get,
     routing::post,
     Router,
 };
@@ -25,14 +24,13 @@ use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool};
 use futures_util::stream::Stream;
 use hyper::StatusCode;
-use log::{debug, error, info, warn, LevelFilter};
+use log::{debug, error, info};
 use serde;
 use serde_json::Value;
-use sha2::{Digest, Sha256, Sha512};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fmt;
-use std::{convert::Infallible, time::Duration};
-use tokio::sync::mpsc;
+
 use tokio::sync::oneshot;
 use tokio_stream::{wrappers::ReceiverStream, StreamExt as _};
 use uuid::Uuid;
@@ -70,6 +68,7 @@ pub struct LLMStatus {
 
     //non llminfo fields
     pub uuid: String, // All LLMStatus are downloaded,
+    pub download_progress: f32,
     pub running: bool,
 }
 
@@ -110,6 +109,7 @@ impl From<&LLM> for LLMStatus {
             session_parameters: llm.session_parameters.0.clone(),
             user_session_parameters: llm.user_session_parameters.0.clone(),
             uuid: llm.uuid.to_string(),
+            download_progress: 100.0,
             running: false,
         }
     }
@@ -137,6 +137,7 @@ impl From<&LLMActivated> for LLMStatus {
             session_parameters: llm.llm.session_parameters.0.clone(),
             user_session_parameters: llm.llm.user_session_parameters.0.clone(),
             uuid: llm.llm.uuid.to_string(),
+            download_progress: 100.0,
             running: true,
         }
     }
@@ -147,6 +148,34 @@ impl From<&LLMActivated> for LLMRunningStatus {
         LLMRunningStatus {
             llm_info: llm.into(),
             uuid: llm.llm.uuid.to_string(),
+        }
+    }
+}
+
+impl From<&DownloadingLLM> for LLMStatus {
+    fn from(llm: &DownloadingLLM) -> Self {
+        LLMStatus {
+            id: llm.llm_reg.id.clone(),
+            family_id: llm.llm_reg.family_id.clone(),
+            organization: llm.llm_reg.organization.clone(),
+            name: llm.llm_reg.name.clone(),
+            homepage: llm.llm_reg.homepage.clone(),
+            license: llm.llm_reg.license.clone(),
+            description: llm.llm_reg.description.clone(),
+            capabilities: llm.llm_reg.capabilities.clone(),
+            requirements: llm.llm_reg.requirements.clone(),
+            tags: llm.llm_reg.tags.clone(),
+            url: llm.llm_reg.url.clone(),
+            local: llm.llm_reg.local.clone(),
+            connector_type: llm.llm_reg.connector_type.to_string(),
+            config: llm.llm_reg.config.clone(),
+            parameters: llm.llm_reg.parameters.clone(),
+            user_parameters: llm.llm_reg.user_parameters.clone(),
+            session_parameters: llm.llm_reg.session_parameters.clone(),
+            user_session_parameters: llm.llm_reg.user_session_parameters.clone(),
+            uuid: llm.uuid.to_string(),
+            download_progress: llm.progress.clone(),
+            running: false,
         }
     }
 }
@@ -468,9 +497,9 @@ async fn request_status(
         Uuid::parse_str(&payload.user_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     let request_uuid = Uuid::parse_str(&payload.request_id)
         .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
-    let user = user_permission_check("", payload.api_key.clone(), user_uuid, state.pool.clone())?;
+    let _user = user_permission_check("", payload.api_key.clone(), user_uuid, state.pool.clone())?;
 
-    let req = database::get_request(request_uuid, state.pool.clone()).map_err(|err| {
+    let req = database::get_request(request_uuid, state.pool.clone()).map_err(|_err| {
         error!("didn't find {:?}", request_uuid);
         (StatusCode::NOT_FOUND, "Request Not Found".into())
     })?;
@@ -502,7 +531,7 @@ async fn request_load_flex(
     info!("Called request_load_flex from API.");
     let user_uuid =
         Uuid::parse_str(&payload.user_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
-    let user = user_permission_check(
+    let _user = user_permission_check(
         "request_load_llm",
         payload.api_key.clone(),
         user_uuid,
@@ -588,7 +617,7 @@ async fn request_load_flex(
     if let Some(preference) = payload.preference {
         // uuid is a singular preference. if we find it, we go.
         if let Some(uuid_pref) = preference.llm_uuid {
-            if let Some(found) = llms.iter().find(|llm| llm.uuid.0 == uuid_pref) {
+            if let Some(_found) = llms.iter().find(|llm| llm.uuid.0 == uuid_pref) {
                 return request_load(
                     state,
                     Json(RequestLoadRequest {
@@ -603,7 +632,7 @@ async fn request_load_flex(
 
         // id is a singular preference. if we find it, we go.
         if let Some(id_pref) = preference.llm_id {
-            if let Some(found) = llms.iter().find(|llm| llm.id == id_pref) {
+            if let Some(_found) = llms.iter().find(|llm| llm.id == id_pref) {
                 return request_load(
                     state,
                     Json(RequestLoadRequest {
@@ -694,10 +723,21 @@ async fn get_llm_status(
         Uuid::parse_str(&payload.user_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     let llm_id =
         Uuid::parse_str(&payload.llm_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
-    let user = user_permission_check("view_llms", payload.api_key, user_uuid, state.pool.clone())?;
+    let _user = user_permission_check("view_llms", payload.api_key, user_uuid, state.pool.clone())?;
+
+    if let Some(downloading_llm) = state.downloading_llms.get(&llm_id) {
+        let llm_stat: LLMStatus = (downloading_llm.value()).into();
+        return Ok(Json(llm_stat));
+    }
+
+    if let Some(active_llm) = state.activated_llms.get(&llm_id) {
+        let llm_stat: LLMStatus = (active_llm.value()).into();
+        return Ok(Json(llm_stat));
+    }
+
     let llm = database::get_llm(llm_id, state.pool.clone()).map_err(|err| {
         error!("Failed to database: {:?}", err.to_string());
-        (StatusCode::INTERNAL_SERVER_ERROR, "Database Error".into())
+        (StatusCode::NOT_FOUND, "Unable to locate LLM.".into())
     })?;
 
     Ok(Json((&llm).into()))
@@ -717,7 +757,7 @@ async fn get_available_llms(
     info!("Called get_available_llms from API.");
     let user_uuid =
         Uuid::parse_str(&payload.user_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
-    let user = user_permission_check("view_llms", payload.api_key, user_uuid, state.pool.clone())?;
+    let _user = user_permission_check("view_llms", payload.api_key, user_uuid, state.pool.clone())?;
     let llms = database::get_available_llms(state.pool.clone()).map_err(|err| {
         error!("Failed to database: {:?}", err.to_string());
         (StatusCode::INTERNAL_SERVER_ERROR, "Database Error".into())
@@ -740,7 +780,7 @@ async fn get_running_llms(
     info!("Called get_running_llms from API.");
     let user_uuid =
         Uuid::parse_str(&payload.user_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
-    let user = user_permission_check("view_llms", payload.api_key, user_uuid, state.pool.clone())?;
+    let _user = user_permission_check("view_llms", payload.api_key, user_uuid, state.pool.clone())?;
     let llms: Vec<LLMStatus> = state
         .activated_llms
         .iter()
@@ -863,7 +903,7 @@ async fn load_llm(
             .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
 
         new_llm = database::get_llm(llm_uuid, state.pool.clone()).map_err(|err| match err {
-            diesel::result::Error::NotFound => (StatusCode::NOT_FOUND, "Unable to find LLM".into()),
+            diesel::result::Error::NotFound => (StatusCode::NOT_FOUND, "Unable to find LLM. If you passed in a machine ID, make sure you don't have two identical LLMs or switch to UUID.".into()),
             _ => (StatusCode::INTERNAL_SERVER_ERROR, "Database Error".into()),
         })?;
     };
@@ -886,7 +926,7 @@ async fn load_llm_flex(
     info!("Called load_llm_flex from API.");
     let user_uuid =
         Uuid::parse_str(&payload.user_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
-    let user = user_permission_check("load_llm", payload.api_key, user_uuid, state.pool.clone())?;
+    let _user = user_permission_check("load_llm", payload.api_key, user_uuid, state.pool.clone())?;
     // We should use currently running LLMs.
     let mut llms = database::get_available_llms(state.pool.clone()).map_err(|err| {
         error!("Failed to database: {:?}", err.to_string());
@@ -959,14 +999,14 @@ async fn load_llm_flex(
     if let Some(preference) = payload.preference {
         // uuid is a singular preference. if we find it, we go.
         if let Some(uuid_pref) = preference.llm_uuid {
-            if let Some(found) = llms.iter().find(|llm| llm.uuid.0 == uuid_pref) {
+            if let Some(_found) = llms.iter().find(|llm| llm.uuid.0 == uuid_pref) {
                 return llm_loading_assistant(state, llms.pop().unwrap()).await;
             }
         }
 
         // id is a singular preference. if we find it, we go.
         if let Some(id_pref) = preference.llm_id {
-            if let Some(found) = llms.iter().find(|llm| llm.id == id_pref) {
+            if let Some(_found) = llms.iter().find(|llm| llm.id == id_pref) {
                 return llm_loading_assistant(state, llms.pop().unwrap()).await;
             }
         }
@@ -1039,9 +1079,23 @@ async fn unload_llm(
     let user_uuid =
         Uuid::parse_str(&payload.user_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     // let user = state
-    let user = user_permission_check("unload_llm", payload.api_key, user_uuid, state.pool.clone())?;
-    let llm_uuid =
-        Uuid::parse_str(&payload.llm_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    let _user =
+        user_permission_check("unload_llm", payload.api_key, user_uuid, state.pool.clone())?;
+    let llm_uuid = match Uuid::parse_str(&payload.llm_id) {
+        Ok(id) => id,
+        Err(_) => {
+            // treat llm_uuid as a string
+            let llm = state
+                .activated_llms
+                .iter()
+                .find(|i| i.value().llm.id == payload.llm_id)
+                .ok_or((
+                    StatusCode::NOT_FOUND,
+                    format!("LLM with ID '{}' not found", payload.llm_id),
+                ))?;
+            llm.value().llm_id.clone()
+        }
+    };
 
     if let Some(running_llm) = state.activated_llms.remove(&llm_uuid) {
         let unload_message = llm_manager::UnloadLLMActorMessage { uuid: llm_uuid };
@@ -1079,7 +1133,7 @@ async fn download_llm(
     info!("Called download_llm from API.");
     let user_uuid =
         Uuid::parse_str(&payload.user_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
-    let user = user_permission_check(
+    let _user = user_permission_check(
         "download_llm",
         payload.api_key,
         user_uuid,
@@ -1088,7 +1142,7 @@ async fn download_llm(
 
     let uuid = Uuid::new_v4();
 
-    let id = payload.llm_registry_entry.id.clone();
+    let _id = payload.llm_registry_entry.id.clone();
 
     tokio::spawn(async move {
         registry::download_and_write_llm(payload.llm_registry_entry, uuid, state.handle.clone())
@@ -1168,7 +1222,7 @@ async fn create_session_id(
             )
             .await
         }
-        Err(err) => {
+        Err(_err) => {
             create_session_flex(
                 state,
                 Json(CreateSessionFlexRequest {
@@ -1434,7 +1488,7 @@ pub struct CreateSessionResponse {
     pub session_id: String,
 }
 async fn create_session_internal(
-    state: State<state::GlobalStateWrapper>,
+    _state: State<state::GlobalStateWrapper>,
     user: user::User,
     llm: &LLMActivated,
     user_session_parameters: HashMap<String, Value>,
@@ -1447,7 +1501,7 @@ async fn create_session_internal(
             session_id: resp.session_id.to_string(),
             // llm_info: llm.llm.as_ref().into(),
         })),
-        Err(err) => Err((
+        Err(_err) => Err((
             StatusCode::INTERNAL_SERVER_ERROR,
             "Error creating session.".into(),
         )),
@@ -1493,7 +1547,7 @@ async fn prompt_session_stream(
                 let stream = Sse::new(event_stream).keep_alive(KeepAlive::default());
                 Ok(stream)
             }
-            Err(err) => Err((
+            Err(_err) => Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "internal server error".into(),
             )),
@@ -1529,7 +1583,8 @@ async fn bare_model_flex(
     info!("Called bare_model_flex from API.");
     let user_uuid =
         Uuid::parse_str(&payload.user_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
-    let user = user_permission_check("bare_model", payload.api_key, user_uuid, state.pool.clone())?;
+    let _user =
+        user_permission_check("bare_model", payload.api_key, user_uuid, state.pool.clone())?;
     let mut llms = database::get_available_llms(state.pool.clone()).map_err(|err| {
         error!("Failed to database: {:?}", err.to_string());
         (StatusCode::INTERNAL_SERVER_ERROR, "Database Error".into())
@@ -1609,7 +1664,7 @@ async fn bare_model_flex(
                 .unwrap()
                 .into_os_string()
                 .into_string()
-                .map_err(|osstr| (StatusCode::INTERNAL_SERVER_ERROR, "Path Error".into()))?,
+                .map_err(|_osstr| (StatusCode::INTERNAL_SERVER_ERROR, "Path Error".into()))?,
         };
         return Ok(Json(resp));
     }
@@ -1618,7 +1673,7 @@ async fn bare_model_flex(
     if let Some(preference) = payload.preference {
         // uuid is a singular preference. if we find it, we go.
         if let Some(uuid_pref) = preference.llm_uuid {
-            if let Some(found) = llms.iter().find(|llm| llm.uuid.0 == uuid_pref) {
+            if let Some(_found) = llms.iter().find(|llm| llm.uuid.0 == uuid_pref) {
                 let llm = llms.pop().unwrap();
                 let resp = BareModelResponse {
                     model: (&llm).into(),
@@ -1628,7 +1683,7 @@ async fn bare_model_flex(
                         .unwrap()
                         .into_os_string()
                         .into_string()
-                        .map_err(|osstr| {
+                        .map_err(|_osstr| {
                             (StatusCode::INTERNAL_SERVER_ERROR, "Path Error".into())
                         })?,
                 };
@@ -1638,7 +1693,7 @@ async fn bare_model_flex(
 
         // id is a singular preference. if we find it, we go.
         if let Some(id_pref) = preference.llm_id {
-            if let Some(found) = llms.iter().find(|llm| llm.id == id_pref) {
+            if let Some(_found) = llms.iter().find(|llm| llm.id == id_pref) {
                 let llm = llms.pop().unwrap();
                 let resp = BareModelResponse {
                     model: (&llm).into(),
@@ -1649,7 +1704,7 @@ async fn bare_model_flex(
                         .unwrap()
                         .into_os_string()
                         .into_string()
-                        .map_err(|osstr| {
+                        .map_err(|_osstr| {
                             (StatusCode::INTERNAL_SERVER_ERROR, "Path Error".into())
                         })?,
                 };
@@ -1713,7 +1768,7 @@ async fn bare_model_flex(
             .unwrap()
             .into_os_string()
             .into_string()
-            .map_err(|osstr| (StatusCode::INTERNAL_SERVER_ERROR, "Path Error".into()))?,
+            .map_err(|_osstr| (StatusCode::INTERNAL_SERVER_ERROR, "Path Error".into()))?,
     };
     return Ok(Json(resp));
 
@@ -1744,9 +1799,9 @@ async fn bare_model(
     // Try parsing UUID, if it succeeds, use UUID, otherwise use pub id.
     let llm = match Uuid::parse_str(&payload.llm_id) {
         Ok(llm_uuid) => database::get_llm(llm_uuid, state.pool.clone())
-            .map_err(|err| (StatusCode::NOT_FOUND, "Unable to find LLM".into()))?,
+            .map_err(|_err| (StatusCode::NOT_FOUND, "Unable to find LLM".into()))?,
         Err(_) => database::get_llm_pub_id(payload.llm_id, state.pool.clone())
-            .map_err(|err| (StatusCode::NOT_FOUND, "Unable to find LLM".into()))?,
+            .map_err(|_err| (StatusCode::NOT_FOUND, "Unable to find LLM".into()))?,
     };
     let resp = BareModelResponse {
         model: (&llm).into(),
@@ -1757,7 +1812,7 @@ async fn bare_model(
             .unwrap()
             .into_os_string()
             .into_string()
-            .map_err(|osstr| (StatusCode::INTERNAL_SERVER_ERROR, "Path Error".into()))?,
+            .map_err(|_osstr| (StatusCode::INTERNAL_SERVER_ERROR, "Path Error".into()))?,
     };
     return Ok(Json(resp));
 }

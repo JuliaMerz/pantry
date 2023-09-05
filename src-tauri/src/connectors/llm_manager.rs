@@ -5,7 +5,7 @@ use crate::state;
 use crate::{connectors, error::PantryError};
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool};
-use log::{debug, error, info, warn, LevelFilter};
+use log::{debug};
 use serde_json::Value;
 use std::{collections::HashMap, path::PathBuf};
 use tauri::AppHandle;

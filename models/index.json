@@ -28,16 +28,16 @@
       },
       "parameters": {
         "topK": 50,
-        "temperature": 0.3
+        "temperature": 0.3,
+        "sampler_string": "repetition:penalty=1.30:last_n=64 freqpresence:last_n=64 seqrepetition topk:k=40 tailfree locallytypical topp:p=0.95 temperature:temperature=0.8"
       },
       "sessionParameters": {},
       "userParameters": [
-        "top_k",
-        "top_p",
-        "repeat_penalty",
-        "temperature"
+        "sampler_string"
       ],
-      "userSessionParameters": []
+      "userSessionParameters": [
+        "system_prompt"
+      ]
     },
     "openchat-3.2-ggml": {
       "capabilities": {
@@ -60,7 +60,8 @@
       "organization": "OpenChat",
       "parameters": {
         "post_prompt": "<|end_of_turn|>GPT4 Assistant:",
-        "pre_prompt": "<|end_of_turn|>GPT4 User:"
+        "pre_prompt": "<|end_of_turn|>GPT4 User:",
+        "sampler_string": "repetition:penalty=1.30:last_n=64 freqpresence:last_n=64 seqrepetition topk:k=40 tailfree locallytypical topp:p=0.95 temperature:temperature=0.8"
       },
       "requirements": "",
       "sessionParameters": {},
@@ -72,16 +73,13 @@
       ],
       "url": "https://huggingface.co/TheBloke/OpenChat_v3.2-GGML/resolve/main/openchat_v3.2.ggmlv3.q4_0.bin",
       "userParameters": [
-        "top_k",
-        "top_p",
-        "repeat_penalty",
-        "temperature",
-        "bias_token",
-        "repetition_penalty_last_n",
+        "sampler_string",
         "pre_prompt",
         "post_prompt"
       ],
-      "userSessionParameters": []
+      "userSessionParameters": [
+        "system_prompt"
+      ]
     },
     "Llama-13b-4-0": {
       "capabilities": {
@@ -149,7 +147,8 @@
       "organization": "StabilityAI",
       "parameters": {
         "post_prompt": " ### Assistant:",
-        "pre_prompt": "### User:"
+        "pre_prompt": "### User:",
+        "sampler_string": "repetition:penalty=1.30:last_n=64 freqpresence:last_n=64 seqrepetition topk:k=40 tailfree locallytypical topp:p=0.95 temperature:temperature=0.8"
       },
       "requirements": "7b model",
       "sessionParameters": {},
@@ -161,16 +160,13 @@
       ],
       "url": "https://huggingface.co/TheBloke/StableBeluga-7B-GGML/resolve/main/stablebeluga-7b.ggmlv3.q4_0.bin",
       "userParameters": [
-        "top_k",
-        "top_p",
-        "repeat_penalty",
-        "temperature",
-        "bias_token",
-        "repetition_penalty_last_n",
+        "sampler_string",
         "pre_prompt",
         "post_prompt"
       ],
-      "userSessionParameters": []
+      "userSessionParameters": [
+        "system_prompt"
+      ]
     }
   }
 }

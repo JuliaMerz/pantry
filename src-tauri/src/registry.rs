@@ -4,8 +4,9 @@ use crate::database_types::*;
 use crate::emitter;
 use crate::llm;
 use crate::state;
+use dashmap::DashMap;
 use futures_util::StreamExt;
-use log::{debug, error, info, warn, LevelFilter};
+use log::info;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs::File;
@@ -65,20 +66,50 @@ pub struct LLMRegistryEntry {
     pub user_session_parameters: Vec<String>,
 }
 
+pub struct DownloadingLLM {
+    pub llm_reg: LLMRegistryEntry,
+    pub progress: f32,
+    pub uuid: Uuid,
+}
+
 pub async fn download_and_write_llm(
     llm_reg: LLMRegistryEntry,
     uuid: Uuid,
     app: tauri::AppHandle,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let state: tauri::State<'_, state::GlobalStateWrapper> = app.state();
-
     let stream_id = format!("{}-{}", llm_reg.id, uuid.to_string());
-
     if state.user_settings.read().unwrap().dedup_downloads {
         if let Ok(llm) = database::get_llm_by_url(llm_reg.url.clone(), state.pool.clone()) {
             return save_new_llm(uuid, llm.model_path.0.unwrap(), stream_id, llm_reg, app);
         }
     }
+
+    // This ensures that we cleanup the downloading in case of a crash.
+    struct Cleanup<'a> {
+        llm: Uuid,
+        state: tauri::State<'a, state::GlobalStateWrapper>,
+    }
+    impl<'a> Drop for Cleanup<'a> {
+        fn drop(&mut self) {
+            self.state.downloading_llms.remove(&self.llm);
+        }
+    }
+    // Thanks typechecker
+    let app2 = app.clone();
+    let _cleaner = Cleanup {
+        llm: uuid.clone(),
+        state: app2.state(),
+    };
+
+    state.downloading_llms.insert(
+        uuid.clone(),
+        DownloadingLLM {
+            llm_reg: llm_reg.clone(),
+            progress: 0.0,
+            uuid: uuid.clone(),
+        },
+    );
 
     // Create the request client.
     let client = reqwest::Client::new();
@@ -120,6 +151,9 @@ pub async fn download_and_write_llm(
         // If the total size of the object is known, calculate the percentage.
         if let Some(total_size) = total_size_opt {
             let percent = (downloaded as f32 / total_size as f32) * 100.0;
+            if let Some(mut download_status) = state.downloading_llms.get_mut(&uuid) {
+                download_status.progress = percent.clone();
+            }
             info!("Downloading {} at {}", llm_reg.id, percent);
             app.emit_all(
                 "downloads",

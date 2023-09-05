@@ -3,7 +3,6 @@
 #![recursion_limit = "512"]
 use crate::connectors::llm_manager;
 
-use crate::state::KeychainEntry;
 use dashmap::DashMap;
 use diesel::connection::SimpleConnection;
 use diesel::prelude::*;
@@ -12,15 +11,15 @@ use diesel::sqlite::Sqlite;
 use diesel::sqlite::SqliteConnection;
 use env_logger::Builder;
 use futures::future::join_all;
-use indicatif::{ProgressBar, ProgressStyle};
-use log::{debug, error, info, warn, LevelFilter};
-use prettytable::{Cell, Row, Table};
+
+use log::{debug, error, info, LevelFilter};
+
 use std::sync::{Arc, Mutex};
 use std::{thread, time};
-use tauri::api::cli::{ArgData, Matches, SubcommandMatches};
+
 use tauri_plugin_deep_link;
 use tokio::sync::oneshot;
-use url::{ParseError, Url};
+use url::Url;
 use uuid::Uuid;
 
 use std::collections::HashMap;
@@ -30,12 +29,11 @@ use std::fs;
 
 use tauri::{
     CustomMenuItem, Manager, RunEvent, SystemTray, SystemTrayEvent, SystemTrayMenu, WindowEvent,
-    Wry,
 };
 
 use crate::llm::LLMWrapper;
 use tauri_plugin_single_instance;
-use tauri_plugin_store::StoreCollection;
+
 use tiny_tokio_actor::*;
 use tokio;
 
@@ -162,7 +160,6 @@ async fn main() {
     // Listen for events on the system event bus
     let mut events: EventReceiver<connectors::SysEvent> = system.events();
     tokio::spawn(async move {
-        info!("listening for sys events");
         loop {
             match events.recv().await {
                 Ok(event) => info!("Received sys event! {:?}", event),
@@ -199,75 +196,94 @@ async fn main() {
 
     //channels for shutting down the web servers
     let (server_shutdown_tx, server_shutdown_rx) = oneshot::channel();
-    let mut server_shutdown_tx = Arc::new(Mutex::new(Some(server_shutdown_tx)));
-    let mut server_shutdown_tx1 = server_shutdown_tx.clone();
+    let server_shutdown_tx = Arc::new(Mutex::new(Some(server_shutdown_tx)));
+    let server_shutdown_tx1 = server_shutdown_tx.clone();
     let (server_shutdown_confirm_tx, server_shutdown_confirm_rx) = oneshot::channel();
-    let mut server_shutdown_confirm_rx = Arc::new(Mutex::new(Some(server_shutdown_confirm_rx)));
-    let mut server_shutdown_confirm_rx1 = server_shutdown_confirm_rx.clone();
+    let server_shutdown_confirm_rx = Arc::new(Mutex::new(Some(server_shutdown_confirm_rx)));
+    let server_shutdown_confirm_rx1 = server_shutdown_confirm_rx.clone();
     // let server_shutdown_confirm_tx = Option(server_shutdown_confirm_tx)
 
     // Run early CLI commands—any that need to run before we shut down from dupes.
-    let cli_conf = config.tauri.cli.clone().unwrap();
-    let package_info = context.package_info();
-
-    cli::cli_command_interpreter(cli_conf, package_info, pool.clone()).await;
 
     let builder = tauri::Builder::default().setup(move |app| {
-
         // TODO: break this out
-        let handle = app.handle();
-        tauri_plugin_deep_link::register(
-            "pantry",
-            move |request| {
-              dbg!(&request);
-
-              let url = Url::parse(&request);
-              let payload = match url {
-                  Ok(url_thing) => {
-                      match url_thing.host_str() {
-                          Some("download") => DeepLinkEvent {
-                              raw: request,
-                              payload: DeepLinkEventPayload::DownloadEvent { base64: url_thing.path()[1..].into() }
-                          },
-                          Some(other) => DeepLinkEvent {
-                              raw: request,
-                              payload: DeepLinkEventPayload::DebugEvent { debug1: url_thing.path().into(), debug2: other.into() }
-                          },
-
-                          None => DeepLinkEvent {
-                              raw: request,
-                              payload: DeepLinkEventPayload::URLError { message: "No path".into() }
-                          }
-
-                      }
-
-                  }
-
-
-
-                  Err(err) => DeepLinkEvent {
-                      raw: request,
-                      payload: DeepLinkEventPayload::URLError { message: err.to_string() }
-                  }
-              };
-
-
-              //request is a string that reprentsnts the WHOLE url, pantry:// included
-              //
-              handle.emit_all("deep-link-request", payload).unwrap();
+        //CLI Then kill
+        match app.get_cli_matches() {
+            Ok(matches) => {
+                tokio::task::block_in_place(|| {
+                    tauri::async_runtime::block_on(cli::cli_command_interpreter(
+                        app.handle(),
+                        matches,
+                        pool.clone(),
+                    ))
+                });
+            }
+            Err(tauri::Error::FailedToExecuteApi(e)) => match e {
+                tauri::api::Error::ParseCliArguments(s) => {
+                    println!("{}", s);
+                }
+                e => {
+                    error!("Other API Error: {:?}", e);
+                }
             },
-          )
-          .unwrap(/* If listening to the scheme is optional for your app, you don't want to unwrap here. */);
+
+            Err(e) => {
+                info!("No matches: {:?}", e);
+            }
+        };
+        app.handle()
+            .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
+                debug!("{}, {argv:?}, {cwd}", app.package_info().name);
+                cli::main_command_response(argv, app.state());
+            }));
+
+        let handle = app.handle();
+        tauri_plugin_deep_link::register("pantry", move |request| {
+            dbg!(&request);
+
+            let url = Url::parse(&request);
+            let payload = match url {
+                Ok(url_thing) => match url_thing.host_str() {
+                    Some("download") => DeepLinkEvent {
+                        raw: request,
+                        payload: DeepLinkEventPayload::DownloadEvent {
+                            base64: url_thing.path()[1..].into(),
+                        },
+                    },
+                    Some(other) => DeepLinkEvent {
+                        raw: request,
+                        payload: DeepLinkEventPayload::DebugEvent {
+                            debug1: url_thing.path().into(),
+                            debug2: other.into(),
+                        },
+                    },
+
+                    None => DeepLinkEvent {
+                        raw: request,
+                        payload: DeepLinkEventPayload::URLError {
+                            message: "No path".into(),
+                        },
+                    },
+                },
+
+                Err(err) => DeepLinkEvent {
+                    raw: request,
+                    payload: DeepLinkEventPayload::URLError {
+                        message: err.to_string(),
+                    },
+                },
+            };
+
+            //request is a string that reprentsnts the WHOLE url, pantry:// included
+            //
+            handle.emit_all("deep-link-request", payload).unwrap();
+        });
         #[cfg(debug_assertions)] // only include this code on debug builds
         {
             let window = app.get_window("main").unwrap();
             window.open_devtools();
             window.close_devtools();
         }
-
-
-
-
         let global_state = state::create_global_state(
             manager_addr,
             DashMap::new(),
@@ -277,22 +293,23 @@ async fn main() {
             pool,
         );
 
-
-
         app.manage(global_state.clone());
         tokio::spawn(async move {
-            server_shutdown_confirm_tx.send(match server::build_server(global_state, server_shutdown_rx).await {
-                Ok(_) => { info!("API server closed with okay.");
-                Ok(())},
-                Err(err) => {
-                    error!("API server failure: {:?}", err);
-                    Err(err)
-                }
-            });
-          });
+            server_shutdown_confirm_tx.send(
+                match server::build_server(global_state, server_shutdown_rx).await {
+                    Ok(_) => {
+                        info!("API server closed with okay.");
+                        Ok(())
+                    }
+                    Err(err) => {
+                        error!("API server failure: {:?}", err);
+                        Err(err)
+                    }
+                },
+            );
+        });
 
-
-        let app_handle = app.handle();
+        let _app_handle = app.handle();
         // SystemTray::new()
         //   .with_menu(
         //     SystemTrayMenu::new()
@@ -335,7 +352,7 @@ async fn main() {
                     .unload_llm(manager_addr.clone()),
             );
         }
-        let borrow_man = manager_addr.clone();
+        let _borrow_man = manager_addr.clone();
         confirm_rx.await;
         join_all(futs).await;
         info!("completed shutdown");
@@ -344,10 +361,6 @@ async fn main() {
 
     let app = builder
         .plugin(tauri_plugin_store::Builder::default().build())
-        .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
-            debug!("{}, {argv:?}, {cwd}", app.package_info().name);
-            cli::main_command_response(argv, app.state());
-        }))
         .system_tray(SystemTray::new().with_menu(tray_menu))
         .on_system_tray_event(move |app, event| match event {
             SystemTrayEvent::MenuItemClick { id, .. } => match id.as_str() {
@@ -392,6 +405,8 @@ async fn main() {
             frontend::interrupt_session,
             frontend::accept_request,
             frontend::reject_request,
+            frontend::exec_path,
+            frontend::new_cli_user,
         ]);
 
     // build_server()
@@ -419,7 +434,7 @@ async fn main() {
             }
         }
         RunEvent::WindowEvent {
-            label,
+            label: _,
             event: WindowEvent::CloseRequested { api, .. },
             ..
         } => {

@@ -10,9 +10,9 @@ use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool};
-use llm::samplers::llm_samplers::prelude::Sampler;
-use llm::InferenceSession;
-use log::{debug, error, info, warn, LevelFilter};
+
+use llm::{InferenceError, InferenceFeedback, InferenceSession};
+use log::{debug, error, info, warn};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
@@ -74,7 +74,7 @@ impl LLMrsConnector {
         let mut path = data_path.clone();
         path.push(format!("llmrs-{}", uuid.to_string()));
         fs::create_dir_all(path.clone());
-        let mut conn = LLMrsConnector {
+        let conn = LLMrsConnector {
             config,
             id,
             uuid,
@@ -98,7 +98,7 @@ impl LLMrsConnector {
         let mut path = self.data_path.clone();
         path.push(llm_sess.id.0.to_string());
 
-        let mut reader =
+        let reader =
             File::open(path).map_err(|err| format!("Failed to deserialize to file: {:?}", err))?;
 
         let snapshot = deserialize_from(reader)
@@ -144,9 +144,9 @@ impl LLMrsConnector {
             let snapshot = raw.get_snapshot();
             let mut path = self.data_path.clone();
             path.push(llmrs_sess.llm_session.read().unwrap().id.0.to_string());
-            let mut writer = File::create(path)
+            let writer = File::create(path)
                 .map_err(|err| format!("Failed to serialize to file: {:?}", err))?;
-            let serialized = serialize_into(writer, &snapshot)
+            let _serialized = serialize_into(writer, &snapshot)
                 .map_err(|err| format!("Failed to serialize to file: {:?}", err))?;
         }
 
@@ -161,7 +161,7 @@ impl LLMrsConnector {
         // if let Some(sess) = self.loaded_sessions.get(&session_id) {
         //     return Ok(sess.value());
         // }
-        if let Some(sess) = self.loaded_sessions.get(&session_id) {
+        if let Some(_sess) = self.loaded_sessions.get(&session_id) {
             return Ok(session_id.clone());
         }
 
@@ -254,11 +254,30 @@ impl LLMInternalWrapper for LLMrsConnector {
         inference_session_config.n_batch = self.user_settings.n_batch;
 
         //TODO: User settings for implementing gpu accel
-        let inference = model_read
+        let mut inference = model_read
             .as_mut()
             .expect("model missing")
             .start_session(inference_session_config);
         let uuid = Uuid::new_v4();
+
+        if let Some(Value::String(s)) = params.get("sampler_string") {
+            match inference.feed_prompt(
+                self.model
+                    .read()
+                    .map_err(|err| format!("failed to get read lock on model {:?}", err))?
+                    .as_ref()
+                    .expect("Model is not available (opt is None)")
+                    .as_ref(),
+                s,
+                &mut Default::default(),
+                |_| -> Result<InferenceFeedback, InferenceError> {
+                    Ok(InferenceFeedback::Continue)
+                },
+            ) {
+                Ok(_) => (),
+                Err(e) => error!("Failed to feed system prompt: {:?}", e),
+            };
+        }
 
         let new_session = LLMrsSession {
             model_session: Arc::new(Mutex::new(inference)),
@@ -475,7 +494,7 @@ impl LLMInternalWrapper for LLMrsConnector {
                         let cancel_token = cancellation.clone();
                         tokio::task::spawn(async move {
                             let print_clone = event_clone.event.clone();
-                            if let Err(e) = send_clone.send(event_clone).await {
+                            if let Err(_e) = send_clone.send(event_clone).await {
                                 warn!("Error sending, so cancelling.");
                                 cancel_token.cancel();
                             }
@@ -513,11 +532,11 @@ impl LLMInternalWrapper for LLMrsConnector {
 
                     llm::InferenceResponse::EotToken => {
                         print!("Received EOT from LLM");
-                        let session_clone = llm_session_armed.clone();
+                        let _session_clone = llm_session_armed.clone();
 
                         let update_item =
                             database::get_llm_history(item_id, self.pool.clone()).unwrap();
-                        let update_item =
+                        let _update_item =
                             database::append_token(update_item, "".into(), true, self.pool.clone())
                                 .unwrap();
 

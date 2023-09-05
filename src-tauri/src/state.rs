@@ -1,12 +1,13 @@
 use crate::connectors; //::LLMRegistryEntry;
 use crate::connectors::llm_manager;
 use crate::llm;
+use crate::registry;
 use dashmap::DashMap;
 use diesel::prelude::*;
 use diesel::r2d2::ConnectionManager;
 use diesel::r2d2::Pool;
 use keyring;
-use log::{debug, error, info, warn, LevelFilter};
+use log::error;
 use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::ops::Deref;
@@ -182,6 +183,8 @@ pub struct GlobalState {
     pub handle: AppHandle,
     // pub available_llms: DashMap<Uuid, Arc<llm::LLM>>,
     pub pool: Pool<ConnectionManager<SqliteConnection>>,
+    // used by server to provide llmstatus for downloading llms
+    pub downloading_llms: DashMap<Uuid, registry::DownloadingLLM>,
 }
 
 /*
@@ -204,6 +207,7 @@ pub fn create_global_state(
             llm_path,
             handle,
             pool: pool,
+            downloading_llms: DashMap::new(),
         }),
     }
 }

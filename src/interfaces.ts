@@ -105,9 +105,9 @@ export const produceEmptyRegistryEntry = (): LLMRegistryEntry => {
     requirements: '',
     license: '',
     parameters: {}, // initialize with default LLMRegistry array
-    userParameters: ["top_k", "top_p", "repeat_penalty", "temperature", "bias_token", "repetition_penalty_last_n", "pre_prompt", "post_prompt"],
+    userParameters: ["sampler_string", "pre_prompt", "post_prompt"],
     sessionParameters: {}, // initialize with default LLMRegistry array
-    userSessionParameters: [],
+    userSessionParameters: ["system_prompt"],
     config: {}, // initialize with default config object
   }
 }

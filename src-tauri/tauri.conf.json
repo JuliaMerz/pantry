@@ -59,8 +59,8 @@
       }
     ],
     "cli": {
-      "description": "",
-      "longDescription": "",
+      "description": "Uses the pantry-rs library to interact with a local or remote pantry instance. You can set PANTRY_CLI_TARGET to target a remote instance and PANTRY_CLI_USER/PANTRY_CLI_KEY to login. If the keys aren't set, the CLI will automatically fall back to keychain based authentication.",
+      "longDescription": "Uses the pantry-rs library to interact with a local or remote pantry instance. You can set PANTRY_CLI_TARGET to target a remote instance and PANTRY_CLI_USER/PANTRY_CLI_KEY to login. If the keys aren't set, the CLI will automatically fall back to keychain based authentication.",
       "beforeHelp": "",
       "afterHelp": "",
       "args": [],
@@ -97,28 +97,48 @@
         },
         "activate": {
           "description": "Activates an LLM configuration.",
-          "longDescription": "",
+          "longDescription": "Activates an LLM configuration. Sends command to server, LLM might take a few seconds to boot.",
           "beforeHelp": "",
           "afterHelp": "",
           "args": [
             {
               "name": "llm_id",
               "index": 1,
-              "takesValue": true
+              "takesValue": true,
+              "required": true,
+              "description": "The ID of the LLM. Can be id or UUID."
             }
           ],
           "subcommands": {}
         },
         "deactivate": {
           "description": "Lists running, available, or downloadable LLM configurations. Defaults to running",
-          "longDescription": "",
+          "longDescription": "Lists running, available, or downloadable LLM configurations. Defaults to running",
           "beforeHelp": "",
           "afterHelp": "",
           "args": [
             {
               "name": "llm_id",
               "index": 1,
-              "takesValue": true
+              "takesValue": true,
+              "required": true,
+              "description": "The ID of the LLM. Can be id or UUID."
+            }
+          ],
+          "subcommands": {}
+        },
+        "status": {
+          "description": "Gets the status of the given LLM",
+          "longDescription": "Gets the status of the given LLM",
+          "beforeHelp": "Note: llm_id must be a UUID",
+          "afterHelp": "",
+          "args": [
+            {
+              "name": "llm_id",
+              "index": 1,
+              "takesValue": true,
+              "required": true,
+              "description": "The ID of the LLM. Can be an id or a UUID."
             }
           ],
           "subcommands": {}
@@ -132,9 +152,54 @@
             {
               "name": "llm_id",
               "index": 1,
-              "takesValue": true
+              "takesValue": true,
+              "required": true,
+              "description": "The ID of the LLM. MUST be a machine ID.",
+              "longDescription": "The ID of the LLM. MUST be a machine ID. You can find a list of available models with `pantry list available`."
             }
           ],
+          "subcommands": {}
+        },
+        "download": {
+          "description": "Download a model from the registry.",
+          "longDescription": "Download a model from the registry. Currently only the default registry is supported. If you want to use your own, you'll have to use the UI.",
+          "beforeHelp": "",
+          "afterHelp": "",
+          "args": [
+            {
+              "name": "llm_id",
+              "index": 1,
+              "takesValue": true,
+              "required": true,
+              "description": "The ID of the LLM. MUST be a machine ID.",
+              "longDescription": "The ID of the LLM. MUST be a machine ID. You can find a list of available models with `pantry list downloadable`."
+            }
+          ],
+          "subcommands": {}
+        },
+        "status": {
+          "description": "Get model status",
+          "longDescription": "Get status of a model.",
+          "beforeHelp": "",
+          "afterHelp": "",
+          "args": [
+            {
+              "name": "llm_id",
+              "index": 1,
+              "takesValue": true,
+              "required": true,
+              "description": "The ID of the LLM. MUST be a UUID.",
+              "longDescription": "The ID of the LLM. MUST be a UUID. You can find a list of available models with `pantry list downloadable`."
+            }
+          ],
+          "subcommands": {}
+        },
+        "new_cli_user": {
+          "description": "Generate a new CLI user.",
+          "longDescription": "Generate a new CLI user. This command runs LOCALLY, meaning PANTRY_CLI_TARGET will have no effect. To use the API remotely, run this command on the target machine, then set your local machine's env variables with the result.",
+          "beforeHelp": "",
+          "afterHelp": "",
+          "args": [],
           "subcommands": {}
         }
       }

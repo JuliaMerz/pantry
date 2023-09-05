@@ -6,7 +6,7 @@ use crate::user::User;
 use chrono::Utc;
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool};
-use log::{debug, error, info, warn, LevelFilter};
+use log::{debug};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::path::PathBuf;

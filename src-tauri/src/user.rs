@@ -5,7 +5,7 @@ use base64::{
     Engine as _,
 };
 use diesel::prelude::*;
-use log::{debug, error, info, warn, LevelFilter};
+
 use rand::Rng;
 use uuid::uuid;
 use uuid::Uuid;
