@@ -3281,8 +3281,8 @@ dependencies = [
 
 [[package]]
 name = "pantry-rs"
-version = "0.0.2"
-source = "git+https://github.com/juliamerz/pantry-rs?branch=main#1da613202ec853f762454bedff7e8e6e7dfe7e6c"
+version = "0.0.3"
+source = "git+https://github.com/juliamerz/pantry-rs?branch=main#c1e61746a65b46fc9d9371f068a4c68f21fcb4db"
 dependencies = [
  "chrono",
  "futures",
