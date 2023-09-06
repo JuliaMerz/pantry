@@ -1,9 +1,7 @@
-# Pantry — An LLM Manager
+# ![An AI generated pair of smiling computers.](./pantry_fancy.png) Pantry — An LLM Manager
 
 Pantry is a cross between Homebrew and Docker, for LLMs. It combines an LLM repository, a local LLM runner,
 and a remote API, accessed via UI or CLI.
-
-![An AI generated pair of smiling computers.](./pantry_fancy.png)
 
 Out of the box, Pantry includes one click downloads, custom sharapable configurations (with deep links!),
 the ability to run multiple LLMs in parallel, a UI, a CLI, and an API.
