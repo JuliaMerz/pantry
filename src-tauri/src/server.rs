@@ -1153,6 +1153,46 @@ async fn download_llm(
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
+struct GetOrDownloadLLMRequest {
+    user_id: String,
+    api_key: String,
+    llm_registry_entry: registry::LLMRegistryEntry,
+}
+#[axum_macros::debug_handler]
+async fn get_or_download_llm(
+    state: State<state::GlobalStateWrapper>,
+    Json(payload): Json<GetOrDownloadLLMRequest>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    info!("Called get_or_download_llm from API.");
+    let user_uuid =
+        Uuid::parse_str(&payload.user_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    let _user = user_permission_check(
+        "download_llm",
+        payload.api_key,
+        user_uuid,
+        state.pool.clone(),
+    )?;
+
+    let llm_opt = database::get_equal_llm(payload.llm_registry_entry.clone(), state.pool.clone())
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    if let Some(llm) = llm_opt {
+        return Ok(Json(llm.uuid.0.to_string().into()));
+    }
+
+    let uuid = Uuid::new_v4();
+
+    let _id = payload.llm_registry_entry.id.clone();
+
+    tokio::spawn(async move {
+        registry::download_and_write_llm(payload.llm_registry_entry, uuid, state.handle.clone())
+            .await;
+    });
+
+    Ok(Json(uuid.to_string().into()))
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 struct CreateSessionRequest {
     user_id: String,
     api_key: String,
@@ -1842,6 +1882,7 @@ pub async fn build_server(
             .route("/load_llm_flex", post(load_llm_flex))
             .route("/unload_llm", post(unload_llm))
             .route("/download_llm", post(download_llm))
+            .route("/get_or_download_llm", post(get_or_download_llm))
             .route("/create_session", post(create_session))
             .route("/create_session_id", post(create_session_id))
             .route("/create_session_flex", post(create_session_flex))

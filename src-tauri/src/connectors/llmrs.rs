@@ -260,7 +260,7 @@ impl LLMInternalWrapper for LLMrsConnector {
             .start_session(inference_session_config);
         let uuid = Uuid::new_v4();
 
-        if let Some(Value::String(s)) = params.get("sampler_string") {
+        if let Some(Value::String(s)) = params.get("system_prompt") {
             match inference.feed_prompt(
                 self.model
                     .read()

@@ -1,20 +1,18 @@
 use crate::database_types::*;
 use crate::llm::{LLMHistoryItem, LLMSession, LLM};
+use crate::registry::LLMRegistryEntry;
 use crate::request::UserRequest;
 use crate::schema;
 use crate::user;
 use crate::user::User;
-use chrono::{Utc};
-
-
+use chrono::Utc;
+use std::collections::{HashMap, HashSet};
 
 use diesel::prelude::*;
 
 use diesel::r2d2::{ConnectionManager, Pool};
 
-
-
-use log::{debug};
+use log::debug;
 
 use sha2::{Digest, Sha256};
 
@@ -31,6 +29,92 @@ pub fn get_llm(
     llm.filter(uuid.eq(DbUuid(llm_id)))
         .select(LLM::as_select())
         .first(conn)
+}
+
+pub fn get_equal_llm(
+    llm_registry_entry: LLMRegistryEntry,
+    pool: Pool<ConnectionManager<SqliteConnection>>,
+) -> Result<Option<LLM>, diesel::result::Error> {
+    let conn = &mut pool.get().unwrap();
+    use schema::llm::dsl::*;
+    let candidates = llm
+        .filter(
+            // first return all matching ones.
+            id.eq(llm_registry_entry.id.clone())
+                .and(family_id.eq(llm_registry_entry.family_id.clone()))
+                .and(url.eq(llm_registry_entry.url.clone()))
+                .and(local.eq(llm_registry_entry.local.clone()))
+                .and(connector_type.eq(llm_registry_entry.connector_type.clone())),
+        )
+        .select(LLM::as_select())
+        .load::<LLM>(conn)?;
+
+    // Filter the candidates based on complex types
+    for candidate in candidates.iter() {
+        if deep_compare(&llm_registry_entry, candidate) {
+            return Ok(Some(candidate.clone()));
+        }
+    }
+    Ok(None)
+}
+
+// Thanks chatgpt
+fn deep_compare(registry_entry: &LLMRegistryEntry, llm_candidate: &LLM) -> bool {
+    if !compare_hashmaps(&registry_entry.config, &*llm_candidate.config) {
+        return false;
+    }
+    if !compare_hashmaps(&registry_entry.parameters, &*llm_candidate.parameters) {
+        return false;
+    }
+    if !compare_hashmaps(
+        &registry_entry.session_parameters,
+        &*llm_candidate.session_parameters,
+    ) {
+        return false;
+    }
+
+    if !compare_vecs_as_sets(
+        &registry_entry.user_parameters,
+        &llm_candidate.user_parameters,
+    ) {
+        return false;
+    }
+    if !compare_vecs_as_sets(
+        &registry_entry.user_session_parameters,
+        &llm_candidate.user_session_parameters,
+    ) {
+        return false;
+    }
+
+    // You can add similar deep comparison logic for other Hashmaps and Vecs here.
+
+    true
+}
+
+fn compare_hashmaps<K, V>(map1: &HashMap<K, V>, map2: &HashMap<K, V>) -> bool
+where
+    K: std::cmp::Eq + std::hash::Hash,
+    V: std::cmp::Eq,
+{
+    if map1.len() != map2.len() {
+        return false;
+    }
+    for (key, value1) in map1.iter() {
+        match map2.get(key) {
+            Some(value2) if value1 == value2 => continue,
+            _ => return false,
+        }
+    }
+    true
+}
+
+fn compare_vecs_as_sets<T: std::cmp::Eq + std::hash::Hash>(vec1: &[T], vec2: &[T]) -> bool {
+    if vec1.len() != vec2.len() {
+        return false;
+    }
+    let set1: HashSet<_> = vec1.iter().collect();
+    let set2: HashSet<_> = vec2.iter().collect();
+    set1 == set2
 }
 
 pub fn count_llm_by_pub_id(
@@ -264,7 +348,7 @@ pub fn get_llm_sessions_user(
     pool: Pool<ConnectionManager<SqliteConnection>>,
 ) -> Result<Vec<(LLMSession, Vec<LLMHistoryItem>)>, diesel::result::Error> {
     let conn = &mut pool.get().unwrap();
-    
+
     use schema::llm_session::dsl as session_dsl;
     let sessions = session_dsl::llm_session
         .filter(session_dsl::llm_uuid.eq(llm_id))
